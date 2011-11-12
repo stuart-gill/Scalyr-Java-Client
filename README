@@ -1,0 +1,15 @@
+Here is the source code to the Scalyr client library. We provide this code for
+several reasons:
+
+1. So that engineers who really like to understand how things work, can see
+the inner workings.
+
+2. To aid in debugging code that invokes the Scalyr client.
+
+3. As sample code for using Scalyr services from a language for which we have
+not yet developed an official client.
+
+Note that as of this writing, no license is attached to this source code. We
+do plan to attach an open-source license in the near future. We do not
+actively solicit outside contributions to the client library, but if you'd
+like to submit a patch, feel free to get in touch (contact@scalyr.com).

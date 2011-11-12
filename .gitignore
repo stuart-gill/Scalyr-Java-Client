@@ -1,0 +1,12 @@
+.metadata
+.DS_Store
+bin
+.classpath
+.project
+*.class
+.settings
+ant_build
+ant_dist
+ant_temp
+build/
+obj
