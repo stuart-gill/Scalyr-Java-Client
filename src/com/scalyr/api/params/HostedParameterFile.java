@@ -14,6 +14,7 @@ import java.util.Date;
 import com.scalyr.api.Converter;
 import com.scalyr.api.internal.Logging;
 import com.scalyr.api.internal.ScalyrUtil;
+import com.scalyr.api.internal.Sleeper;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.json.JSONParser;
 
@@ -119,54 +120,81 @@ class HostedParameterFile extends ParameterFile {
   
   // private static final AtomicInteger idCounter = new AtomicInteger(0);
   
-  private void initiateAsyncFetch(final Long expectedVersion) {
+  private void initiateAsyncFetch(final Long expectedVersion_) {
     // final int id = idCounter.incrementAndGet();
     // Logging.log("initiateAsyncFetch " + id + ": path [" + filePath + "], expectedVersion " + expectedVersion);
     
     ParameterService.asyncApiExecutor.execute(new Runnable(){
+      Long expectedVersion = expectedVersion_;
+      
       @Override public void run() {
-        try {
-          long startTime = System.currentTimeMillis();
-          String rawResponse = parameterService.getFile(getPathname(), expectedVersion, MAX_WAIT_TIME);
+        int retryInterval = 500;
+        
+        while (true) {
+          try {
+            long startTime = System.currentTimeMillis();
+            String rawResponse = parameterService.getFile(getPathname(), expectedVersion, MAX_WAIT_TIME);
           
-          JSONObject response = (JSONObject) new JSONParser().parse(rawResponse);
+            JSONObject response = (JSONObject) new JSONParser().parse(rawResponse);
           
-          Object status = response.get("status");
-          Object stalenessSlop = response.get("stalenessSlop");
-          long stalenessSlopLong = (stalenessSlop != null) ? Converter.toLong(stalenessSlop) : 0;
+            Object statusObj = response.get("status");
+            String status = (statusObj != null) ? statusObj.toString() : "error/server/missingStatus";
           
-          // Logging.log("initiateAsyncFetch " + id + ": status " + status);
+            Object stalenessSlop = response.get("stalenessSlop");
+            long stalenessSlopLong = (stalenessSlop != null) ? Converter.toLong(stalenessSlop) : 0;
           
-          if ("success".equals(status)) {
-            updateStalenessBound(stalenessSlopLong + System.currentTimeMillis() - startTime);
-            setFileState(new FileState(Converter.toLong(response.get("version")),
-                (String) response.get("content"),
-                new Date((long)Converter.toLong(response.get("createDate"))),
-                new Date((long)Converter.toLong(response.get("modDate"   )))));
-          } else if ("noSuchFile".equals(status)) {
-            updateStalenessBound(stalenessSlopLong + System.currentTimeMillis() - startTime);
-            setFileState(new FileState(0, null, null, null)); 
-          } else if ("unchanged".equals(status)) {
-            updateStalenessBound(stalenessSlopLong + System.currentTimeMillis() - startTime);
-          } else {
-            Logging.warn("Malformed response from parameter server (status [" + status + "])");
+            // Logging.log("initiateAsyncFetch " + id + ": status " + status);
+          
+            if (status.startsWith("success")) {
+              // After a successful response, we quickly issue a new request. We pause slightly
+              // simply as a safety measure. Normally, we would not expect a rapid-fire sequence
+              // of successful responses -- we should usually wait for MAX_WAIT_TIME. The delay
+              // here ensures that even if something goes wrong, we'll still issue at most a
+              // couple of requests per second.
+              retryInterval = 500;
+              
+              if (status.startsWith("success/noSuchFile")) {
+                updateStalenessBound(stalenessSlopLong + System.currentTimeMillis() - startTime);
+                setFileState(new FileState(0, null, null, null));
+              } else if (status.startsWith("success/unchanged")) {
+                updateStalenessBound(stalenessSlopLong + System.currentTimeMillis() - startTime);
+              } else {
+                updateStalenessBound(stalenessSlopLong + System.currentTimeMillis() - startTime);
+                setFileState(new FileState(Converter.toLong(response.get("version")),
+                    (String) response.get("content"),
+                    new Date((long)Converter.toLong(response.get("createDate"))),
+                    new Date((long)Converter.toLong(response.get("modDate"   )))));
+              }
+            } else {
+              // After any sort of error or backoff response, retry after 5 seconds, successively
+              // doubling up to a maximum of 1 minute. 
+              if (retryInterval < 5000)
+                retryInterval = 5000;
+              else
+                retryInterval = Math.min(retryInterval*2, 60000);
+              
+              if (status.startsWith("error/client/limit")) {
+                Logging.warn("Parameter server returned status [" + status + "], message [" +
+                    response.get("message") + "]; backing off");
+                
+              } else {
+                Logging.warn("Bad response from parameter server (status [" + status + "], message [" +
+                    response.get("message") + "])");
+              }
+            }
+          } catch (Exception ex) {
+            // Logging.log("initiateAsyncFetch " + id + ": exception");
+            Logging.warn("Error communicating with parameter server", ex);
           }
-        } catch (Exception ex) {
-          // Logging.log("initiateAsyncFetch " + id + ": exception");
-          Logging.warn("Error communicating with parameter server", ex);
-        }
         
-        // TODO: throttle requests, to avoid runaway loops in the case of connectivity problems or
-        // other systemic problems.
-        try {
-          Thread.sleep(500);
-        } catch (InterruptedException ex) {
-          throw new RuntimeException(ex);
-        }
+          // TODO: throttle requests, to avoid runaway loops in the case of connectivity problems or
+          // other systemic problems.
+          Sleeper.instance.sleep(retryInterval);
         
-        // Logging.log("initiateAsyncFetch " + id + ": recursing");
-        synchronized (this) {
-          initiateAsyncFetch(fileState != null ? fileState.version : null);
+          // Logging.log("initiateAsyncFetch " + id + ": recursing");
+          synchronized (this) {
+            expectedVersion = (fileState != null ? fileState.version : null);
+          }
         }
       }});
   }

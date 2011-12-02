@@ -15,11 +15,15 @@ import java.io.Reader;
 import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.net.URL;
+import java.nio.charset.Charset;
+import java.util.Random;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 
 import com.scalyr.api.ScalyrException;
 import com.scalyr.api.ScalyrNetworkException;
+import com.scalyr.api.TuningConstants;
+import com.scalyr.api.internal.Logging;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.json.JSONParser;
 
@@ -27,10 +31,18 @@ import com.scalyr.api.json.JSONParser;
  * Encapsulates the raw HTTP-level API to the parameter service.
  */
 public class ParameterService {
+  private static final Charset utf8 = Charset.forName("UTF-8");
+  
   /**
-   * Server URL, including a trailing slash.
+   * Server URLs, each including a trailing slash. Synchronize access.
    */
-  private final String serverAddress;
+  private String[] serverAddresses;
+  
+  /**
+   * Random number generator used to randomize server choices and retry
+   * intervals. Synchronize access.
+   */
+  private Random random = new Random();
   
   /**
    * API token we pass in all requests to the server.
@@ -38,18 +50,47 @@ public class ParameterService {
   private final String apiToken;
   
   /**
-   * Construct a ParameterService object to communicate with the server at the specified address.
+   * Construct a ParameterService.
    * 
-   * @param serverAddress Server URL, e.g. http://api.scalyr.com. Trailing slash is optional.
    * @param apiToken The API authorization token to use when communicating with the server. (If you need
    *     to use multiple api tokens, construct a separate ParameterService instance for each.)
    */
-  public ParameterService(String serverAddress, String apiToken) {
-    if (!serverAddress.endsWith("/"))
-      serverAddress += "/";
-    
-    this.serverAddress = serverAddress;
+  public ParameterService(String apiToken) {
     this.apiToken = apiToken;
+    
+    setServerAddress(
+        "https://api1.scalyr.com," +
+    		"https://api2.scalyr.com," +
+    		"https://api3.scalyr.com," +
+    		"https://api4.scalyr.com");
+  }
+  
+  /**
+   * Specify the URL of the Scalyr server, e.g. https://api.scalyr.com. Trailing slash is optional.
+   * <p>
+   * You may specify multiple addresses, separated by commas. If multiple addresses are specified,
+   * the ParameterService will choose one as it sees fit, and retry failed requests on a different
+   * server.
+   * <p>
+   * You should only call this method if using a staging server or other non-production instance
+   * of the Scalyr service. Otherwise, we automatically default to the production Scalyr service.
+   * It is best to call this method at most once, before issuing any requests through this
+   * ParameterService object.
+   * 
+   * @return this ParameterService object.
+   */
+  public synchronized ParameterService setServerAddress(String value) {
+    serverAddresses = value.split(",");
+    for (int i = 0; i < serverAddresses.length; i++) {
+      String s = serverAddresses[i];
+      s = s.trim();
+      if (!s.endsWith("/"))
+        s += "/";
+      
+      serverAddresses[i] = s;
+    }
+    
+    return this;
   }
   
   /**
@@ -111,24 +152,6 @@ public class ParameterService {
    * 
    * @throws ScalyrException
    * @throws ScalyrNetworkException
-   * 
-   * {
-   *   status:  "success",
-   * }
-   * 
-   * {
-   *   status: "versionMismatch" // if expectedVersion was not null and did not match the file's current version
-   * }
-   * 
-   * {
-   *   status:  "error", // if the request is somehow incorrect
-   *   message: "[a human-readable message]"
-   * }
-   * 
-   * {
-   *   status:  "serverError", // if the server experienced an internal error while processing the request
-   *   message: "[a human-readable message]"
-   * }
    */
   public String putFile(String path, Long expectedVersion, String content, boolean deleteFile)
       throws ScalyrException, ScalyrNetworkException {
@@ -156,21 +179,6 @@ public class ParameterService {
    * 
    * Note that paths are complete (absolute) pathnames, beginning with a slash, and are sorted
    * lexicographically.
-   * 
-   * {
-   *   status:     "success",
-   *   paths:      ["...", "...", "..."]
-   * }
-   * 
-   * {
-   *   status:  "error", // if the request is somehow incorrect
-   *   message: "[a human-readable message]"
-   * }
-   * 
-   * {
-   *   status:  "serverError", // if the server experienced an internal error while processing the request
-   *   message: "[a human-readable message]"
-   * }
    */
   public String listFiles() 
       throws ScalyrException, ScalyrNetworkException {
@@ -181,10 +189,61 @@ public class ParameterService {
   }
 
   /**
-   * Invoke serverAddress/methodName on the server, sending the specified parameters as the request
+   * Invoke methodName on a selected server, sending the specified parameters as the request
    * body. Parse the response as JSON.
+   * <p>
+   * If "retriable" error (e.g. a network error) occurs, we retry on another server. We continue
+   * retrying until a non-retriable error occurs, there are no more servers to try, or a reasonable
+   * deadline (TuningConstants.MAXIMUM_RETRY_PERIOD_MS) expires.
+   * 
+   * @throws ScalyrException
+   * @throws ScalyrNetworkException
    */
   protected String invokeApi(String methodName, JSONObject parameters) {
+    // Produce a shuffled copy of the server addresses, so that load is distributed
+    // across the servers.
+    int N = serverAddresses.length;
+    String[] shuffled = new String[N];
+    System.arraycopy(serverAddresses, 0, shuffled, 0, N);
+           
+    for (int i = 0; i < N - 1; i++) {
+      int j = i + random.nextInt(N - i);
+      String temp = shuffled[i];
+      shuffled[i] = shuffled[j];
+      shuffled[j] = temp;
+    }
+    
+    // Try the operation on each server in turn.
+    long startTime = System.currentTimeMillis();
+    int serverIndex = 0;
+    while (true) {
+      String serverAddress = shuffled[serverIndex];
+      try {
+        return invokeApiOnServer(serverAddress, methodName, parameters);
+      } catch (ScalyrNetworkException ex) {
+        // Fall into the loop and retry the operation on the next server.
+        // If there are no more servers, or our deadline has expired, then
+        // rethrow the exception.
+        serverIndex++;
+        
+        long elapsed = System.currentTimeMillis() - startTime;
+        
+        if (serverIndex >= N || elapsed >= TuningConstants.MAXIMUM_RETRY_PERIOD_MS)
+          throw ex;
+        
+        Logging.info("invokeApi: " + methodName + " failed on " + serverAddress + "; will retry", ex);
+      }
+    }
+  }
+
+  /**
+   * Invoke serverAddress/methodName on the server, sending the specified parameters as the request
+   * body. Parse the response as JSON.
+   * 
+   * @throws ScalyrException
+   * @throws ScalyrNetworkException
+   */
+  protected String invokeApiOnServer(String serverAddress, String methodName, JSONObject parameters) {
     HttpURLConnection connection = null;  
     try {
       // Send the request.
@@ -193,10 +252,10 @@ public class ParameterService {
       connection.setRequestMethod("POST");
       connection.setUseCaches(false);
       connection.setDoInput(true);
-      // connection.setConnectTimeout(timeoutMs);
-      // connection.setReadTimeout(timeoutMs);
+      connection.setConnectTimeout(TuningConstants.HTTP_CONNECT_TIMEOUT_MS);
+      connection.setReadTimeout(TuningConstants.MAXIMUM_RETRY_PERIOD_MS);
       
-      byte[] requestBody = parameters.toJSONString().getBytes();
+      byte[] requestBody = parameters.toJSONString().getBytes(utf8);
       connection.setRequestProperty("Content-Type", "application/json");
       connection.setRequestProperty("Content-Length", "" + requestBody.length);
       connection.setDoOutput(true);
