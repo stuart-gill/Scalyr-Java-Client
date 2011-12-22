@@ -1,9 +1,21 @@
-/* Scalyr client library
- * Copyright (c) 2011 Scalyr
- * All rights reserved
+/*
+ * Scalyr client library
+ * Copyright 2011 Scalyr, Inc.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
-package com.scalyr.api.params;
+package com.scalyr.api.knobs;
 
 import java.io.File;
 import java.io.IOException;
@@ -16,9 +28,9 @@ import com.scalyr.api.internal.Logging;
 import com.scalyr.api.internal.ScalyrUtil;
 
 /**
- * ParameterFile implementation that reads from a file in the local filesystem.
+ * ConfigurationFile implementation that reads from a file in the local filesystem.
  */
-public class LocalParameterFile extends ParameterFile {
+public class LocalConfigurationFile extends ConfigurationFile {
   private final File rootDir;
   
   /**
@@ -66,13 +78,18 @@ public class LocalParameterFile extends ParameterFile {
   private static Timer pollTimer;
   
   /**
-   * Construct a LocalParameterFile.
+   * Task used to poll for changes to this file.
+   */
+  private final TimerTask pollTask;
+  
+  /**
+   * Construct a LocalConfigurationFile.
    * 
    * @param rootDir Directory to which filePath is relative.
    * @param filePath Path/name for this file.
    * @param pollIntervalMs How often to check for changes to the file (in milliseconds).
    */
-  LocalParameterFile(File rootDir, String filePath, int pollIntervalMs) {
+  LocalConfigurationFile(File rootDir, String filePath, int pollIntervalMs) {
     super(filePath);
     
     this.rootDir = rootDir;
@@ -82,23 +99,29 @@ public class LocalParameterFile extends ParameterFile {
     fetchFileState(true);
     
     // Kick off a timer task to periodically check for changes to the file.
-    synchronized (LocalParameterFile.class) {
+    synchronized (LocalConfigurationFile.class) {
       if (pollTimer == null)
         pollTimer = new Timer();
     }
     
-    pollTimer.schedule(new TimerTask(){
+    pollTask = new TimerTask(){
       @Override public void run() {
         try {
           fetchFileState(false);
         } catch (Exception ex) {
-          Logging.warn("Error reading local parameter file [" + file.getAbsolutePath() + "]", ex);
+          Logging.warn("Error reading local configuration file [" + file.getAbsolutePath() + "]", ex);
         }
-      }}, pollIntervalMs, pollIntervalMs);
+      }};
+    pollTimer.schedule(pollTask, pollIntervalMs, pollIntervalMs);
+  }
+  
+  @Override public synchronized void close() {
+    pollTask.cancel();
+    super.close();
   }
   
   @Override public String toString() {
-    return "<parameter file \"" + pathname + "\" in filesystem \"" + rootDir.getAbsolutePath() + "\">";
+    return "<configuration file \"" + pathname + "\" in filesystem \"" + rootDir.getAbsolutePath() + "\">";
   }
   
   private static String removeLeadingSlash(String filePath) {
@@ -109,7 +132,7 @@ public class LocalParameterFile extends ParameterFile {
   }
   
   /**
-   * Read the file's latest state, and update the ParameterFile as appropriate.
+   * Read the file's latest state, and update the ConfigurationFile as appropriate.
    */
   private void fetchFileState(boolean initialFetch) {
     // Fetch the file's current metadata.

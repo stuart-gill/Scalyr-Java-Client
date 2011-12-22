@@ -1,9 +1,21 @@
-/* Scalyr client library
- * Copyright (c) 2011 Scalyr
- * All rights reserved
+/*
+ * Scalyr client library
+ * Copyright 2011 Scalyr, Inc.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
-package com.scalyr.api.params;
+package com.scalyr.api.knobs;
 
 import java.io.BufferedReader;
 import java.io.DataOutputStream;
@@ -19,6 +31,8 @@ import java.nio.charset.Charset;
 import java.util.Random;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.scalyr.api.ScalyrException;
 import com.scalyr.api.ScalyrNetworkException;
@@ -28,9 +42,9 @@ import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.json.JSONParser;
 
 /**
- * Encapsulates the raw HTTP-level API to the parameter service.
+ * Encapsulates the raw HTTP-level API to the Knobs service.
  */
-public class ParameterService {
+public class KnobService {
   private static final Charset utf8 = Charset.forName("UTF-8");
   
   /**
@@ -50,12 +64,12 @@ public class ParameterService {
   private final String apiToken;
   
   /**
-   * Construct a ParameterService.
+   * Construct a KnobService.
    * 
    * @param apiToken The API authorization token to use when communicating with the server. (If you need
-   *     to use multiple api tokens, construct a separate ParameterService instance for each.)
+   *     to use multiple api tokens, construct a separate KnobService instance for each.)
    */
-  public ParameterService(String apiToken) {
+  public KnobService(String apiToken) {
     this.apiToken = apiToken;
     
     setServerAddress(
@@ -69,17 +83,17 @@ public class ParameterService {
    * Specify the URL of the Scalyr server, e.g. https://api.scalyr.com. Trailing slash is optional.
    * <p>
    * You may specify multiple addresses, separated by commas. If multiple addresses are specified,
-   * the ParameterService will choose one as it sees fit, and retry failed requests on a different
+   * the KnobService will choose one as it sees fit, and retry failed requests on a different
    * server.
    * <p>
    * You should only call this method if using a staging server or other non-production instance
    * of the Scalyr service. Otherwise, we automatically default to the production Scalyr service.
    * It is best to call this method at most once, before issuing any requests through this
-   * ParameterService object.
+   * KnobService object.
    * 
-   * @return this ParameterService object.
+   * @return this KnobService object.
    */
-  public synchronized ParameterService setServerAddress(String value) {
+  public synchronized KnobService setServerAddress(String value) {
     serverAddresses = value.split(",");
     for (int i = 0; i < serverAddresses.length; i++) {
       String s = serverAddresses[i];
@@ -94,22 +108,25 @@ public class ParameterService {
   }
   
   /**
-   * Return a ParameterFileFactory that retrieves files via this ParameterService instance.
+   * Return a ConfigurationFileFactory that retrieves files via this KnobService instance.
    * 
    * @param cacheDir If not null, then we store a copy of each retrieved file in this directory.
    *     On subsequent calls to createFactory, we use the stored files to initialize our state until
-   *     each file can be re-fetched from the server. This prevents parameter file reads from
-   *     stalling.
+   *     each file can be re-fetched from the server. This prevents configuration file reads from
+   *     stalling. If this directory does not exist, we create it.
    */
-  public ParameterFileFactory createFactory(final File cacheDir) {
-    return new ParameterFileFactory(){
-      @Override protected ParameterFile createFileReference(String filePath) {
-        return new HostedParameterFile(ParameterService.this, filePath, cacheDir);
+  public ConfigurationFileFactory createFactory(final File cacheDir) {
+    if (cacheDir != null && !cacheDir.exists())
+      cacheDir.mkdirs();
+    
+    return new ConfigurationFileFactory(){
+      @Override protected ConfigurationFile createFileReference(String filePath) {
+        return new HostedConfigurationFile(KnobService.this, filePath, cacheDir);
       }};
   }
   
   /**
-   * Retrieve a parameter file.
+   * Retrieve a configurtion file.
    * 
    * @param path The file path, e.g. "/params.txt". Must begin with a slash.
    * @param expectedVersion Should normally be null. If not null, equal to the file's current version
@@ -120,7 +137,7 @@ public class ParameterService {
    *     elapsed. (Note: this is not honored absolutely -- sometimes, the server may return a result
    *     prior to waitTime even if the file has not changed.)
    * 
-   * @return The response from the server. See {@link scalyr.com/paramJsonApi}.
+   * @return The response from the server. See {@link scalyr.com/httpApi}.
    * 
    * @throws ScalyrException
    * @throws ScalyrNetworkException
@@ -140,7 +157,7 @@ public class ParameterService {
   }
   
   /**
-   * Create, update, or delete a parameter file.
+   * Create, update, or delete a configuration file.
    * 
    * @param path The file path, e.g. "/params.txt". Must begin with a slash.
    * @param expectedVersion Should normally be null. If not null, and not equal to the file's current version,
@@ -148,7 +165,7 @@ public class ParameterService {
    * @param content New content for the file. Pass null if passing deleteFile = true.
    * @param deleteFile True to delete the file, false to create/update it.
    * 
-   * @return The response from the server. See {@link scalyr.com/paramJsonApi}.
+   * @return The response from the server. See {@link scalyr.com/httpApi}.
    * 
    * @throws ScalyrException
    * @throws ScalyrNetworkException
@@ -170,9 +187,9 @@ public class ParameterService {
   }
   
   /**
-   * Retrieve a list of all parameter files.
+   * Retrieve a list of all configuration files.
    * 
-   * @return The response from the server. See {@link scalyr.com/paramJsonApi}.
+   * @return The response from the server. See {@link scalyr.com/httpApi}.
    * 
    * @throws ScalyrException
    * @throws ScalyrNetworkException
@@ -315,5 +332,11 @@ public class ParameterService {
    * need multiple outstanding requests to the server. If we don't eliminate this executor, then do tweak it to
    * properly name its threads.
    */
-  static final Executor asyncApiExecutor = Executors.newCachedThreadPool();
+  static final Executor asyncApiExecutor = Executors.newCachedThreadPool(new ThreadFactory(){
+    private final AtomicInteger threadNumber = new AtomicInteger(1);
+    @Override public Thread newThread(Runnable runnable) {
+      Thread t = new Thread(runnable, "Scalyr " + threadNumber.getAndIncrement());
+      t.setDaemon(true);
+      return t;
+    }});
 }

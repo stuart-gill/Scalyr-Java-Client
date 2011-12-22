@@ -1,9 +1,21 @@
-/* Scalyr client library
- * Copyright (c) 2011 Scalyr
- * All rights reserved
+/*
+ * Scalyr client library
+ * Copyright 2011 Scalyr, Inc.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ * 
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
  */
 
-package com.scalyr.api.params;
+package com.scalyr.api.knobs;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -18,19 +30,19 @@ import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONObject;
 
 /**
- * Encapsulates a specific entry in a JSON-format parameter file.
+ * Encapsulates a specific entry in a JSON-format configuration file.
  * <p>
- * It is generally best to use a type-specific subclass of Parameter, such as
- * Parameter.Integer or Parameter.String, rather than casting the result of
- * Parameter.get() yourself. This is because Java casting does not know how to
+ * It is generally best to use a type-specific subclass of Knob, such as
+ * Knob.Integer or Knob.String, rather than casting the result of
+ * Knob.get() yourself. This is because Java casting does not know how to
  * convert between numeric types (e.g. Double -> Integer), and so simple casting
  * is liable to throw ClassCastException.
  */
-public class Parameter {
+public class Knob {
   /**
    * Files in which we look for the value. We use the first file that defines our key.
    */
-  private final ParameterFile[] files;
+  private final ConfigurationFile[] files;
   
   /**
    * The key we look for in each file.
@@ -43,7 +55,7 @@ public class Parameter {
   private final Object defaultValue;
   
   /**
-   * False until we first retrieve a value from the parameter file.
+   * False until we first retrieve a value from the configuration file.
    */
   private boolean hasValue;
   
@@ -56,12 +68,12 @@ public class Parameter {
    * Callback used to listen for changes in the underlying file, or null if we are not
    * currently listening. We listen if and only if updateListeners is nonempty.
    */
-  private Callback<ParameterFile> fileListener;
+  private Callback<ConfigurationFile> fileListener;
   
   /**
    * All callbacks which have been registered to be notified when our value changes.
    */
-  private Set<Callback<Parameter>> updateListeners = new HashSet<Callback<Parameter>>();
+  private Set<Callback<Knob>> updateListeners = new HashSet<Callback<Knob>>();
   
   /**
    * @param key The key to look for (a fieldname of the top-level JSON object in the file).
@@ -70,14 +82,14 @@ public class Parameter {
    * @param files The files in which we look for the value. We use the first file that
    *     defines the specified key.
    */
-  public Parameter(java.lang.String key, Object defaultValue, ParameterFile ... files) {
+  public Knob(java.lang.String key, Object defaultValue, ConfigurationFile ... files) {
     this.files = files;
     this.key = key;
     this.defaultValue = defaultValue;
   }
   
   /**
-   * Return a value from the first parameter file which contains the specified key.
+   * Return a value from the first configuration file which contains the specified key.
    * <p>
    * Ignore any files which do not exist. If none of the files contain the key, return defaultValue.
    * If any file has not yet been retrieved from the server, we block until it can be retrieved.
@@ -86,42 +98,42 @@ public class Parameter {
    * @param defaultValue Value to return if the file does not exist or does not contain the key.
    * @param files The files in which we search for the value.
    */
-  public static Object get(java.lang.String valueKey, Object defaultValue, ParameterFile ... files) {
-    return new Parameter(valueKey, defaultValue, files).get();
+  public static Object get(java.lang.String valueKey, Object defaultValue, ConfigurationFile ... files) {
+    return new Knob(valueKey, defaultValue, files).get();
   }
   
   /**
-   * Like {@link #get(java.lang.String, Object, ParameterFile[])}, but converts the value to an Integer.
+   * Like {@link #get(java.lang.String, Object, ConfigurationFile[])}, but converts the value to an Integer.
    */
-  public static java.lang.Integer getInteger(java.lang.String valueKey, java.lang.Integer defaultValue, ParameterFile ... files) {
+  public static java.lang.Integer getInteger(java.lang.String valueKey, java.lang.Integer defaultValue, ConfigurationFile ... files) {
     return Converter.toInteger(get(valueKey, defaultValue, files));
   }
   
   /**
-   * Like {@link #get(java.lang.String, Object, ParameterFile[])}, but converts the value to an Long.
+   * Like {@link #get(java.lang.String, Object, ConfigurationFile[])}, but converts the value to an Long.
    */
-  public static java.lang.Long getLong(java.lang.String valueKey, java.lang.Long defaultValue, ParameterFile ... files) {
+  public static java.lang.Long getLong(java.lang.String valueKey, java.lang.Long defaultValue, ConfigurationFile ... files) {
     return Converter.toLong(get(valueKey, defaultValue, files));
   }
   
   /**
-   * Like {@link #get(java.lang.String, Object, ParameterFile[])}, but converts the value to a Double.
+   * Like {@link #get(java.lang.String, Object, ConfigurationFile[])}, but converts the value to a Double.
    */
-  public static java.lang.Double getDouble(java.lang.String valueKey, java.lang.Double defaultValue, ParameterFile ... files) {
+  public static java.lang.Double getDouble(java.lang.String valueKey, java.lang.Double defaultValue, ConfigurationFile ... files) {
     return Converter.toDouble(get(valueKey, defaultValue, files));
   }
   
   /**
-   * Like {@link #get(java.lang.String, Object, ParameterFile[])}, but converts the value to a Boolean.
+   * Like {@link #get(java.lang.String, Object, ConfigurationFile[])}, but converts the value to a Boolean.
    */
-  public static java.lang.Boolean getBoolean(java.lang.String valueKey, java.lang.Boolean defaultValue, ParameterFile ... files) {
+  public static java.lang.Boolean getBoolean(java.lang.String valueKey, java.lang.Boolean defaultValue, ConfigurationFile ... files) {
     return Converter.toBoolean(get(valueKey, defaultValue, files));
   }
   
   /**
-   * Like {@link #get(java.lang.String, Object, ParameterFile[])}, but converts the value to a String.
+   * Like {@link #get(java.lang.String, Object, ConfigurationFile[])}, but converts the value to a String.
    */
-  public static java.lang.String getString(java.lang.String valueKey, java.lang.String defaultValue, ParameterFile ... files) {
+  public static java.lang.String getString(java.lang.String valueKey, java.lang.String defaultValue, ConfigurationFile ... files) {
     return Converter.toString(get(valueKey, defaultValue, files));
   }
   
@@ -145,7 +157,7 @@ public class Parameter {
     long entryTime = (timeoutInMs != null) ? System.currentTimeMillis() : 0;
     
     Object newValue = defaultValue;
-    for (ParameterFile file : files) {
+    for (ConfigurationFile file : files) {
       JSONObject parsedFile;
       try {
         if (timeoutInMs != null) {
@@ -154,10 +166,10 @@ public class Parameter {
         } else {
           parsedFile = file.getAsJson();
         }
-      } catch (BadParameterFileException ex) {
+      } catch (BadConfigurationFileException ex) {
         parsedFile = null;
         
-        Logging.info("Parameter: ignoring file [" + file + "]: it does not contain valid JSON");
+        Logging.info("Knob: ignoring file [" + file + "]: it does not contain valid JSON");
       }
       
       if (parsedFile != null && parsedFile.containsKey(key)) {
@@ -174,8 +186,8 @@ public class Parameter {
       hasValue = true;
       
       if (!hadValue || !ScalyrUtil.equals(value, oldValue)) {
-        List<Callback<Parameter>> listenerSnapshot = new ArrayList<Callback<Parameter>>(updateListeners);
-        for (Callback<Parameter> updateListener : listenerSnapshot) {
+        List<Callback<Knob>> listenerSnapshot = new ArrayList<Callback<Knob>>(updateListeners);
+        for (Callback<Knob> updateListener : listenerSnapshot) {
           updateListener.run(this);
         }
       }
@@ -187,21 +199,21 @@ public class Parameter {
   /**
    * Register a callback to be invoked whenever our value changes.
    */
-  public synchronized void addUpdateListener(Callback<Parameter> updateListener) {
+  public synchronized void addUpdateListener(Callback<Knob> updateListener) {
     if (updateListeners.size() == 0) {
-      fileListener = new Callback<ParameterFile>(){
-        @Override public void run(ParameterFile updatedParameterFile) {
+      fileListener = new Callback<ConfigurationFile>(){
+        @Override public void run(ConfigurationFile updatedFile) {
           if (allFilesHaveValues())
             get();
         }};
-      for (ParameterFile file : files)
+      for (ConfigurationFile file : files)
         file.addUpdateListener(fileListener);
     }
     updateListeners.add(updateListener);
   }
   
   protected synchronized boolean allFilesHaveValues() {
-    for (ParameterFile file : files)
+    for (ConfigurationFile file : files)
       if (!file.hasState())
         return false;
     
@@ -211,21 +223,21 @@ public class Parameter {
   /**
    * De-register a callback. If the callback was not registered, we do nothing.
    */
-  public synchronized void removeUpdateListener(Callback<Parameter> updateListener) {
+  public synchronized void removeUpdateListener(Callback<Knob> updateListener) {
     updateListeners.remove(updateListener);
     
     if (updateListeners.size() == 0) {
-      for (ParameterFile file : files)
+      for (ConfigurationFile file : files)
         file.removeUpdateListener(fileListener);
       fileListener = null;
     }
   }
   
   /**
-   * Subclass of Parameter which is specialized for Integer values.
+   * Subclass of Knob which is specialized for Integer values.
    */
-  public static class Integer extends Parameter {
-    public Integer(java.lang.String valueKey, java.lang.Integer defaultValue, ParameterFile ... files) {
+  public static class Integer extends Knob {
+    public Integer(java.lang.String valueKey, java.lang.Integer defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
     }
     
@@ -239,10 +251,10 @@ public class Parameter {
   }
   
   /**
-   * Subclass of Parameter which is specialized for Long values.
+   * Subclass of Knob which is specialized for Long values.
    */
-  public static class Long extends Parameter {
-    public Long(java.lang.String valueKey, java.lang.Long defaultValue, ParameterFile ... files) {
+  public static class Long extends Knob {
+    public Long(java.lang.String valueKey, java.lang.Long defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
     }
     
@@ -256,10 +268,10 @@ public class Parameter {
   }
   
   /**
-   * Subclass of Parameter which is specialized for Double values.
+   * Subclass of Knob which is specialized for Double values.
    */
-  public static class Double extends Parameter {
-    public Double(java.lang.String valueKey, java.lang.Double defaultValue, ParameterFile ... files) {
+  public static class Double extends Knob {
+    public Double(java.lang.String valueKey, java.lang.Double defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
     }
     
@@ -273,10 +285,10 @@ public class Parameter {
   }
   
   /**
-   * Subclass of Parameter which is specialized for Boolean values.
+   * Subclass of Knob which is specialized for Boolean values.
    */
-  public static class Boolean extends Parameter {
-    public Boolean(java.lang.String valueKey, java.lang.Boolean defaultValue, ParameterFile ... files) {
+  public static class Boolean extends Knob {
+    public Boolean(java.lang.String valueKey, java.lang.Boolean defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
     }
     
@@ -290,10 +302,10 @@ public class Parameter {
   }
   
   /**
-   * Subclass of Parameter which is specialized for String values.
+   * Subclass of Knob which is specialized for String values.
    */
-  public static class String extends Parameter {
-    public String(java.lang.String valueKey, java.lang.String defaultValue, ParameterFile ... files) {
+  public static class String extends Knob {
+    public String(java.lang.String valueKey, java.lang.String defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
     }
     
