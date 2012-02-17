@@ -340,7 +340,6 @@ public abstract class ConfigurationFile {
     if (fileState != null)
       return fileState;
     
-    long startNanos = System.nanoTime();
     long deadlineTime = (timeoutInMs != null) ? (System.currentTimeMillis() + timeoutInMs) : 0;  
     
     while (fileState == null) {

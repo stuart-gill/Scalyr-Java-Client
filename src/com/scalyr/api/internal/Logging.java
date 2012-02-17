@@ -40,4 +40,8 @@ public class Logging {
     System.out.println(message);
     ex.printStackTrace(System.out);
   }
+  
+  public static void printStackTrace() {
+    new Exception().printStackTrace();
+  }
 }

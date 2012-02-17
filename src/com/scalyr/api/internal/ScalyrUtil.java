@@ -27,6 +27,11 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.UnsupportedEncodingException;
+import java.nio.charset.Charset;
+import java.util.concurrent.Executor;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Miscellaneous utility methods.
@@ -36,11 +41,29 @@ import java.io.UnsupportedEncodingException;
  * changes to the .internal package at any time.
  */
 public class ScalyrUtil {
+  public static final Charset utf8 = Charset.forName("UTF-8");
+  
   /**
    * Equivalent to a.equals(b), but handles the case where a and/or b are null.
    */
   public static boolean equals(Object a, Object b) {
     return (a == null) ? (b == null) : a.equals(b);
+  }
+  
+  /**
+   * Value which must be added to System.nanoTime() to yield # of nanoseconds since the epoch.
+   */
+  private static Long nanoTimeOffset = null;
+  
+  static {
+    nanoTimeOffset = System.currentTimeMillis() * 1000000L - System.nanoTime();
+  }
+  
+  /**
+   * Equivalent to System.nanoTime(), but based off the 1/1/1970 epoch like currentTimeMillis().
+   */
+  public static long nanoTime() {
+    return System.nanoTime() + nanoTimeOffset;
   }
   
   /**
@@ -101,4 +124,44 @@ public class ScalyrUtil {
       throw new RuntimeException(ex);
     }
   }
+  
+  /**
+   * Return a string representation of this machine's IP address, or "unknown" if unable to
+   * retrieve the address.
+   */
+  public static String getIpAddress() {
+    try {
+      java.net.InetAddress addr = java.net.InetAddress.getLocalHost();
+      return addr.getHostAddress();
+    } catch (java.net.UnknownHostException ex) {
+      return "unknown";
+    }
+  }
+  
+  /**
+   * Return this machine's hostname, or "unknown" if unable to retrieve the name.
+   */
+  public static String getHostname() {
+    try {
+      java.net.InetAddress addr = java.net.InetAddress.getLocalHost();
+      return addr.getHostName();
+    } catch (java.net.UnknownHostException ex) {
+      return "unknown";
+    }
+  }
+  
+  /**
+   * Executor used to invoke API operations asynchronously.
+   * 
+   * TODO: see http://stackoverflow.com/questions/1014528/asynchronous-http-client-for-java for better ways
+   * to perform asynchronous requests. Might also think about adding batch support to the API, so that we don't
+   * need multiple outstanding requests to the server.
+   */
+  public static final Executor asyncApiExecutor = Executors.newCachedThreadPool(new ThreadFactory(){
+    private final AtomicInteger threadNumber = new AtomicInteger(1);
+    @Override public Thread newThread(Runnable runnable) {
+      Thread t = new Thread(runnable, "Scalyr " + threadNumber.getAndIncrement());
+      t.setDaemon(true);
+      return t;
+    }});
 }

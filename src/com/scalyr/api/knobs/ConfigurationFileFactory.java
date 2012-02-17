@@ -25,7 +25,7 @@ import java.util.Map;
  */
 public abstract class ConfigurationFileFactory {
   /**
-   * Maps pathname to ConfigurationFile instance. Used to avoid creating multiple ConfigurationFile
+   * Maps pathname to ConfigurationFile instance. Used to avoid creating multiple ConfigurationFiles
    * for the same file.
    * 
    * Access synchronized on "this".

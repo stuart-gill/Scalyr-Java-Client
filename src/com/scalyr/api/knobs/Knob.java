@@ -35,7 +35,7 @@ import com.scalyr.api.json.JSONObject;
  * It is generally best to use a type-specific subclass of Knob, such as
  * Knob.Integer or Knob.String, rather than casting the result of
  * Knob.get() yourself. This is because Java casting does not know how to
- * convert between numeric types (e.g. Double -> Integer), and so simple casting
+ * convert between numeric types (e.g. Double -&gt; Integer), and so simple casting
  * is liable to throw ClassCastException.
  */
 public class Knob {

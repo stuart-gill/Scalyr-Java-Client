@@ -47,4 +47,9 @@ public class TuningConstants {
   public static final int MINIMUM_FETCH_INTERVAL_AFTER_ERROR = 5000;
   
   public static final int MAXIMUM_FETCH_INTERVAL = 60000;
+  
+  /**
+   * Maximum length of an individual attribute in a Scalyr Logs event.
+   */
+  public static final int MAXIMUM_EVENT_ATTRIBUTE_LENGTH = 1000;
 }

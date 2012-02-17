@@ -137,7 +137,7 @@ class HostedConfigurationFile extends ConfigurationFile {
     // final int id = idCounter.incrementAndGet();
     // Logging.log("initiateAsyncFetch " + id + ": path [" + filePath + "], expectedVersion " + expectedVersion);
     
-    KnobService.asyncApiExecutor.execute(new Runnable(){
+    ScalyrUtil.asyncApiExecutor.execute(new Runnable(){
       Long expectedVersion = expectedVersion_;
       
       @Override public void run() {
