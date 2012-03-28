@@ -71,6 +71,20 @@ public abstract class ScalyrService {
   }
   
   /**
+   * Return the server URL(s) we use, as a comma-delimited list.
+   */
+  public synchronized String getServerAddresses() {
+    StringBuilder sb = new StringBuilder();
+    for (int i = 0; i < serverAddresses.length; i++) {
+      if (i > 0)
+        sb.append(",");
+      sb.append(serverAddresses[i]);
+    }
+    
+    return sb.toString();
+  }
+  
+  /**
    * Specify the URL of the Scalyr server, e.g. https://api.scalyr.com. Trailing slash is optional.
    * <p>
    * You may specify multiple addresses, separated by commas. If multiple addresses are specified,
@@ -124,10 +138,11 @@ public abstract class ScalyrService {
     }
     
     // Try the operation on each server in turn.
-    long startTime = System.currentTimeMillis();
+    long startTimeMs = System.currentTimeMillis();
     int serverIndex = 0;
     while (true) {
       String serverAddress = shuffled[serverIndex];
+      long requestStartTimeMs = System.currentTimeMillis();
       try {
         return invokeApiOnServer(serverAddress, methodName, parameters);
       } catch (ScalyrNetworkException ex) {
@@ -136,14 +151,14 @@ public abstract class ScalyrService {
         // rethrow the exception.
         serverIndex++;
         
-        long elapsed = System.currentTimeMillis() - startTime;
+        long totalElapsedMs = System.currentTimeMillis() - startTimeMs;
         
         if (serverIndex >= N) {
+          long requestElapsedMs = System.currentTimeMillis() - requestStartTimeMs;
           Logging.warn("invokeApi: " + methodName + " failed on " + serverAddress
-              + "; no more servers to try, so giving up", ex);
+              + " (after " + requestElapsedMs + " milliseconds); no more servers to try, so giving up", ex);
           throw ex;
-        }
-        if (elapsed >= TuningConstants.MAXIMUM_RETRY_PERIOD_MS) {
+        } else if (totalElapsedMs >= TuningConstants.MAXIMUM_RETRY_PERIOD_MS) {
           Logging.warn("invokeApi: " + methodName + " failed on " + serverAddress
               + "; maximum retry period of " + TuningConstants.MAXIMUM_RETRY_PERIOD_MS
               + " ms exceeded, so giving up", ex);

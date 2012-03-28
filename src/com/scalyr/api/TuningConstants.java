@@ -52,4 +52,14 @@ public class TuningConstants {
    * Maximum length of an individual attribute in a Scalyr Logs event.
    */
   public static final int MAXIMUM_EVENT_ATTRIBUTE_LENGTH = 1000;
+  
+  /**
+   * Batching interval for uploading events to the Scalyr Logs service.
+   */
+  public static final int EVENT_UPLOAD_INTERVAL_MS = 5000;
+  
+  /**
+   * Interval between sampling of registered Gauges.
+   */
+  public static final int GAUGE_SAMPLE_INTERVAL_MS = 60000;
 }

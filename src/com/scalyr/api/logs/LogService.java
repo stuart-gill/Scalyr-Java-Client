@@ -44,14 +44,14 @@ public class LogService extends ScalyrService {
   }
   
   /**
-   * Upload a batch of events to the Scalyr Logs service.
-   *
-   * TODO: add a reference to the documentation for the format of the events and threadInfos lists. 
+   * Upload a batch of events to the Scalyr Logs service. See the
+   * <a href="https://log.scalyr.com/logHttpApi">HTTP API documentation</a> for a detailed description
+   * of each parameter.
    * 
-   * @param sessionId ID of this session (process instance).
+   * @param sessionId ID of this process instance.
    * @param sessionInfo Attributes to associate with this session. Should be remain constant for
    *     all calls to uploadEvents with a given session ID.
-   * @param events The events to upload for this thread.
+   * @param events The events to upload.
    * @param threadInfos Optional; contains information for the threads referenced in the events array.
    * 
    * @return The response from the server. See <a href='https://www.scalyr.com/httpApi'>scalyr.com/httpApi</a>.
@@ -66,7 +66,8 @@ public class LogService extends ScalyrService {
     
     parameters.put("token", apiToken);
     parameters.put("session", sessionId);
-    parameters.put("sessionInfo", sessionInfo);
+    if (sessionInfo != null)
+      parameters.put("sessionInfo", sessionInfo);
     parameters.put("events", events);
     if (threadInfos != null && threadInfos.size() > 0)
       parameters.put("threads", threadInfos);

@@ -32,9 +32,14 @@ import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONArray;
 import com.scalyr.api.json.JSONObject;
 
+/**
+ * Internal class which buffers events, and periodically uploads them to the Scalyr Logs service.
+ */
 public class EventUploader {
-  private static final int uploadIntervalMs = 5000;
-  
+  /**
+   * Time when this uploader was created. Used as a proxy for the startup time of the
+   * containing process.
+   */
   private final long launchTimeNs = ScalyrUtil.nanoTime();
   
   /**
@@ -42,6 +47,15 @@ public class EventUploader {
    */
   private final String sessionId;
   
+  /**
+   * Client-specified attributes to associate with the events we upload, or null.
+   */
+  private final EventAttributes serverAttributes;
+  
+  /**
+   * If true, then we automatically upload events using a timer. If false, then the client must
+   * manually initiate upload. Always true except during tests.
+   */
   private final boolean autoUpload;
   
   /**
@@ -54,10 +68,13 @@ public class EventUploader {
    */
   private String ourHostname;
   
-  final ThreadLocal<ThreadEvents> threadEvents = new ThreadLocal<ThreadEvents>() {
-    @Override protected ThreadEvents initialValue() {
+  /**
+   * ThreadLocal for tracking information per thread -- thread ID, name, etc.
+   */
+  final ThreadLocal<PerThreadState> threadEvents = new ThreadLocal<PerThreadState>() {
+    @Override protected PerThreadState initialValue() {
       Thread thread = Thread.currentThread();
-      ThreadEvents temp = new ThreadEvents(thread.getId(), thread.getName());
+      PerThreadState temp = new PerThreadState(thread.getId(), thread.getName());
       synchronized (threads) {
         assert(!threads.containsKey(thread));
         threads.put(thread, temp);
@@ -67,11 +84,11 @@ public class EventUploader {
   };
   
   /**
-   * All outstanding threads.
+   * All outstanding threads for which we have recorded at least one event.
    * 
-   * TODO: should scavenge records for idle threads... but don't want to lose the thread IDs.
+   * TODO: should scavenge records for idle threads.
    */
-  private Map<Thread, ThreadEvents> threads = new HashMap<Thread, ThreadEvents>();
+  private Map<Thread, PerThreadState> threads = new HashMap<Thread, PerThreadState>();
   
   /**
    * Events which have been recorded since the last call to uploadBuffer.
@@ -123,7 +140,8 @@ public class EventUploader {
   /**
    * Construct an EventUploader to buffer events and upload them to the given LogService instance.
    */
-  EventUploader(LogService logService, Integer memoryLimit, String sessionId, boolean autoUpload) {
+  EventUploader(LogService logService, Integer memoryLimit, String sessionId, boolean autoUpload,
+      EventAttributes serverAttributes) {
     this.logService = logService;
     this.autoUpload = autoUpload;
     
@@ -133,6 +151,7 @@ public class EventUploader {
     this.memoryLimit = (memoryLimit != null) ? (memoryLimit / 2) : null;
     
     this.sessionId = sessionId;
+    this.serverAttributes = serverAttributes;
     
     launchUploadTimer();
   }
@@ -175,15 +194,15 @@ public class EventUploader {
       pendingEventsReachedLimit = false;
     }
     
-    List<ThreadEvents> threadsSnapshot;
+    List<PerThreadState> threadsSnapshot;
     synchronized (threads) {
-      threadsSnapshot = new ArrayList<ThreadEvents>(threads.values());
+      threadsSnapshot = new ArrayList<PerThreadState>(threads.values());
     }
     
     // Sort the threads alphabetically by name -- this ensures a stable order when
     // uploading, which is helpful for tests.
-    Collections.sort(threadsSnapshot, new Comparator<ThreadEvents>(){
-      @Override public int compare(ThreadEvents a, ThreadEvents b) {
+    Collections.sort(threadsSnapshot, new Comparator<PerThreadState>(){
+      @Override public int compare(PerThreadState a, PerThreadState b) {
         if (a.name == null || b.name == null) {
           if (a.name == null && b.name == null)
             return 0;
@@ -202,10 +221,14 @@ public class EventUploader {
     if (ourHostname != null)
       sessionInfo.put("hostname", ourHostname);
 
+    if (serverAttributes != null)
+      for (Map.Entry<String, Object> entry : serverAttributes.values.entrySet())
+        sessionInfo.put(entry.getKey(), entry.getValue());
+    
     JSONArray threadInfos = new JSONArray();
     
     // TODO: only include threads for which we are uploading at least one event.
-    for (ThreadEvents thread : threadsSnapshot) {
+    for (PerThreadState thread : threadsSnapshot) {
       JSONObject threadInfo = new JSONObject();
       threadInfo.put("id", Long.toString(thread.threadId));
       threadInfo.put("name", thread.name);
@@ -236,7 +259,8 @@ public class EventUploader {
               Logging.warn("Exception in Logs upload timer", ex);
             }
           }};
-        uploadTimer.schedule(uploadTask, uploadIntervalMs, uploadIntervalMs);
+        uploadTimer.schedule(uploadTask, TuningConstants.EVENT_UPLOAD_INTERVAL_MS,
+            TuningConstants.EVENT_UPLOAD_INTERVAL_MS);
       }
     }
   }
@@ -244,7 +268,7 @@ public class EventUploader {
   /**
    * Information that we store per running thread.
    */
-  class ThreadEvents {
+  class PerThreadState {
     /**
      * Thread.getId() for the thread whose events we store.
      */
@@ -260,7 +284,7 @@ public class EventUploader {
      */
     final long startTime = getMonotonicNanos();
     
-    ThreadEvents(long threadId, String name) {
+    PerThreadState(long threadId, String name) {
       this.threadId = threadId;
       this.name = name;
     }

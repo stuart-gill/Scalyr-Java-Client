@@ -197,7 +197,9 @@ class HostedConfigurationFile extends ConfigurationFile {
             }
           } catch (Exception ex) {
             // Logging.log("initiateAsyncFetch " + id + ": exception");
-            Logging.warn("Error communicating with configuration server", ex);
+            Logging.warn("Error communicating with the configuration server(s) [" +
+                knobService.getServerAddresses() + "] to fetch file [" + getPathname() + "]",
+                ex);
           }
         
           // TODO: throttle requests, to avoid runaway loops in the case of connectivity problems or

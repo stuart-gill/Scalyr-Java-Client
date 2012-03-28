@@ -17,9 +17,12 @@
 
 package com.scalyr.api.logs;
 
+/**
+ * Tracks a span initiated by a method such as Events.start().
+ */
 public class Span {
   /**
-   * Timestamp of the start event.
+   * nanotime() timestamp of the start event.
    */
   final long startTime;
   

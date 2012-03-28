@@ -21,27 +21,47 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 
+/**
+ * An EventAttributes object encapsulates named attributes to be associated with an event.
+ * It can store Boolean, String, or numeric values. All other data types are converted to
+ * String.
+ */
 public class EventAttributes {
   final Map<String, Object> values = new HashMap<String, Object>();
   
+  /**
+   * Construct an empty attribute list.
+   */
   public EventAttributes() {
   }
   
+  /**
+   * Construct a one-entry attribute list.
+   */
   public EventAttributes(String key, Object value) {
     put(key, value);
   }
   
+  /**
+   * Construct a two-entry attribute list.
+   */
   public EventAttributes(String key1, Object value1, String key2, Object value2) {
     put(key1, value1);
     put(key2, value2);
   }
   
+  /**
+   * Construct a three-entry attribute list.
+   */
   public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3) {
     put(key, value);
     put(key2, value2);
     put(key3, value3);
   }
   
+  /**
+   * Construct a four-entry attribute list.
+   */
   public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3,
       String key4, Object value4) {
     put(key, value);
@@ -50,6 +70,9 @@ public class EventAttributes {
     put(key4, value4);
   }
   
+  /**
+   * Construct a five-entry attribute list.
+   */
   public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3,
       String key4, Object value4, String key5, Object value5) {
     put(key, value);
@@ -59,25 +82,54 @@ public class EventAttributes {
     put(key5, value5);
   }
   
+  /**
+   * Construct a six-entry attribute list.
+   */
+  public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3,
+      String key4, Object value4, String key5, Object value5, String key6, Object value6) {
+    put(key, value);
+    put(key2, value2);
+    put(key3, value3);
+    put(key4, value4);
+    put(key5, value5);
+    put(key6, value6);
+  }
+  
+  /**
+   * Construct an attribute list with an arbitrary number of entries. Even-numbered array elements are
+   * attribute names, and odd-numbered array elements are attribute values.
+   */
   public EventAttributes(Object[] inputs) {
     for (int i = 0; i < inputs.length; i += 2)
       put((String)inputs[i], inputs[i+1]);
   }
   
+  /**
+   * Construct a shallow copy of the given object.
+   */
   public EventAttributes(EventAttributes objectToCopy) {
     for (Map.Entry<String, Object> entry : objectToCopy.values.entrySet())
       put(entry.getKey(), entry.getValue());
   }
   
+  /**
+   * Return the value of the specified attribute, or null if the attribute is not defined.
+   */
   public Object get(String key) {
     return values.get(key);
   }
   
+  /**
+   * Store (or overwrite) a value for the specified attribute.
+   */
   public EventAttributes put(String key, Object value) {
     values.put(key, toValueType(value));
     return this;
   }
   
+  /**
+   * Return true if a value is stored for the specified attribute.
+   */
   public boolean containsKey(String key) {
     return values.containsKey(key);
   }
@@ -112,5 +164,12 @@ public class EventAttributes {
   
   @Override public String toString() {
     return values.toString();
+  }
+  
+  /**
+   * Return all attributes -- a collection of {attribute name, attribute value} pairs.
+   */
+  public Iterable<Map.Entry<String, Object>> getEntries() {
+    return values.entrySet();
   }
 }
