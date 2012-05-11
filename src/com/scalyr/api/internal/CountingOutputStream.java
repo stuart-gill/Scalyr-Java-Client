@@ -13,16 +13,24 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
- * Taken from the json-simple library, by Yidong Fang and Chris Nokleberg.
- * This copy has been modified by Scalyr, Inc.; see README.txt for details.
  */
 
-package com.scalyr.api.json;
+package com.scalyr.api.internal;
 
-public interface JSONAware {
-  /**
-   * @return JSON text
-   */
-  String toJSONString();
+import java.io.OutputStream;
+
+/**
+ * OutputStream implementation which discards all output, but counts the number of
+ * bytes which were written.
+ */
+public class CountingOutputStream extends OutputStream {
+  public int bytesWritten;
+  
+  @Override public void write(int b) {
+    bytesWritten++;
+  }
+
+  @Override public void write (byte[] b, int offset, int length) {
+    bytesWritten += length;
+  }
 }

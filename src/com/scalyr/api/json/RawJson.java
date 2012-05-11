@@ -20,18 +20,31 @@
 
 package com.scalyr.api.json;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.Writer;
 
-public interface JSONStreamAware {
-  /**
-   * write JSON string to out.
-   */
-  void writeJSONString(Writer out) throws IOException;
-  
-  /**
-   * Write as UTF8-encoded JSON.
-   */
-  void writeJSONBytes(OutputStream out) throws IOException;
+import com.scalyr.api.internal.ScalyrUtil;
+
+/**
+ * RawJson encapsulates an unparsed UTF-8 JSON string.
+ */
+public abstract class RawJson implements JSONAware, JSONStreamAware {
+  @Override public void writeJSONString(Writer out) throws IOException {
+    out.write(toJSONString());
+  }
+
+  @Override public String toJSONString() {
+    ByteArrayOutputStream stream = new ByteArrayOutputStream();
+    try {
+      writeJSONBytes(stream);
+    } catch (IOException ex) {
+      // This should never happen, since we're working with in-memory data.
+      throw new RuntimeException(ex);
+    }
+    return new String(stream.toByteArray(), ScalyrUtil.utf8);
+  }
+
+  @Override public abstract void writeJSONBytes(OutputStream out) throws IOException;
 }

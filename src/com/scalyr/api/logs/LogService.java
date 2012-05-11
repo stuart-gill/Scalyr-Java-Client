@@ -1,6 +1,6 @@
 /*
  * Scalyr client library
- * Copyright 2011 Scalyr, Inc.
+ * Copyright 2012 Scalyr, Inc.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,6 +22,7 @@ import com.scalyr.api.ScalyrNetworkException;
 import com.scalyr.api.internal.ScalyrService;
 import com.scalyr.api.json.JSONArray;
 import com.scalyr.api.json.JSONObject;
+import com.scalyr.api.json.JSONStreamAware;
 
 /**
  * Encapsulates the raw HTTP-level API to the Logs service.
@@ -51,7 +52,7 @@ public class LogService extends ScalyrService {
    * @param sessionId ID of this process instance.
    * @param sessionInfo Attributes to associate with this session. Should be remain constant for
    *     all calls to uploadEvents with a given session ID.
-   * @param events The events to upload.
+   * @param events The events to upload (a JSON array).
    * @param threadInfos Optional; contains information for the threads referenced in the events array.
    * 
    * @return The response from the server. See <a href='https://www.scalyr.com/httpApi'>scalyr.com/httpApi</a>.
@@ -60,7 +61,7 @@ public class LogService extends ScalyrService {
    * @throws ScalyrNetworkException
    */
   public String uploadEvents(String sessionId, JSONObject sessionInfo,
-      JSONArray events, JSONArray threadInfos)
+      JSONStreamAware events, JSONArray threadInfos)
       throws ScalyrException, ScalyrNetworkException {
     JSONObject parameters = new JSONObject();
     

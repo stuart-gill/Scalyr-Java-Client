@@ -1,6 +1,6 @@
 /*
  * Scalyr client library
- * Copyright 2011 Scalyr, Inc.
+ * Copyright 2012 Scalyr, Inc.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,10 +18,10 @@
 package com.scalyr.api.internal;
 
 import java.io.BufferedReader;
-import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.Reader;
 import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
@@ -189,13 +189,16 @@ public abstract class ScalyrService {
       connection.setConnectTimeout(TuningConstants.HTTP_CONNECT_TIMEOUT_MS);
       connection.setReadTimeout(TuningConstants.MAXIMUM_RETRY_PERIOD_MS);
       
-      byte[] requestBody = parameters.toJSONString().getBytes(ScalyrUtil.utf8);
+      CountingOutputStream countingStream = new CountingOutputStream();
+      parameters.writeJSONBytes(countingStream);
+      int requestLength = countingStream.bytesWritten;
+      
       connection.setRequestProperty("Content-Type", "application/json");
-      connection.setRequestProperty("Content-Length", "" + requestBody.length);
+      connection.setRequestProperty("Content-Length", "" + requestLength);
       connection.setDoOutput(true);
       
-      DataOutputStream output = new DataOutputStream(connection.getOutputStream());
-      output.write(requestBody);
+      OutputStream output = connection.getOutputStream();
+      parameters.writeJSONBytes(output);
       output.flush();
       output.close();
       

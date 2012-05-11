@@ -1,6 +1,6 @@
 /*
  * Scalyr client library
- * Copyright 2011 Scalyr, Inc.
+ * Copyright 2012 Scalyr, Inc.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,9 @@
 
 package com.scalyr.api.logs;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -27,10 +30,12 @@ import java.util.Timer;
 import java.util.TimerTask;
 
 import com.scalyr.api.TuningConstants;
+import com.scalyr.api.internal.CircularByteArray;
 import com.scalyr.api.internal.Logging;
 import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONArray;
 import com.scalyr.api.json.JSONObject;
+import com.scalyr.api.json.RawJson;
 
 /**
  * Internal class which buffers events, and periodically uploads them to the Scalyr Logs service.
@@ -91,28 +96,25 @@ public class EventUploader {
   private Map<Thread, PerThreadState> threads = new HashMap<Thread, PerThreadState>();
   
   /**
-   * Events which have been recorded since the last call to uploadBuffer.
+   * Holds the serialized form of all events which have been recorded since the last call to uploadBuffer.
+   * Each event is followed by a comma, so the contents of the buffer always look like this:
+   * 
+   *   {...},{...},{...}, ...
    */
-  private JSONArray pendingEvents = new JSONArray();
+  private final CircularByteArray pendingEventBuffer;
   
   /**
-   * Estimated RAM usage for pendingEvents.
-   */
-  private long pendingEventsSize = 0;
-  
-  /**
-   * True if we've discarded at least one event because we reached memoryLimit.
-   * Reset whenever an upload completes (thus freeing up memory). This ensures
+   * True if we've discarded at least one event because we reached pendingEventBuffer
+   * is full. Reset whenever an upload completes (thus freeing up memory). This ensures
    * that we don't "stutter" at the edge of the memory boundary, yielding a
    * confusing situation where events are dropped intermittently.
    */
   private boolean pendingEventsReachedLimit = false;
   
   /**
-   * If we have an in-flight upload request to the server, this holds the estimated
-   * RAM usage of that request. Otherwise null.
+   * True if we have an in-flight upload request to the server.
    */
-  private Long pendingUploadSize = null;
+  private boolean uploadInProgress = false;
   
   /**
    * Timer used to generate upload events. Allocated when the first event is recorded.
@@ -121,8 +123,8 @@ public class EventUploader {
   private TimerTask uploadTask = null;
   
   /**
-   * Object used to synchronize access to pendingEvents, pendingEventsSize,
-   * pendingEventsReachedLimit, and pendingUploadSize.
+   * Object used to synchronize access to pendingEventBuffer, pendingEventsReachedLimit,
+   * and uploadInProgress.
    */
   private final Object uploadSynchronizer = new Object(); 
   
@@ -140,15 +142,13 @@ public class EventUploader {
   /**
    * Construct an EventUploader to buffer events and upload them to the given LogService instance.
    */
-  EventUploader(LogService logService, Integer memoryLimit, String sessionId, boolean autoUpload,
+  EventUploader(LogService logService, int memoryLimit, String sessionId, boolean autoUpload,
       EventAttributes serverAttributes) {
     this.logService = logService;
     this.autoUpload = autoUpload;
     
-    // We divide memoryLimit in half to be conservative, as the upload process makes a
-    // copy of the events being uploaded.
-    // TODO: fix this.
-    this.memoryLimit = (memoryLimit != null) ? (memoryLimit / 2) : null;
+    this.memoryLimit = memoryLimit;
+    pendingEventBuffer = new CircularByteArray(memoryLimit);
     
     this.sessionId = sessionId;
     this.serverAttributes = serverAttributes;
@@ -166,6 +166,9 @@ public class EventUploader {
   
   /**
    * Force all events recorded to date to be uploaded to the server.
+   * 
+   * (NOTE: this is not foolproof. If the server request fails, or an upload was already in progress
+   * when we are called, some events may not be uploaded. This method is only used in tests.)
    */
   synchronized void flush() {
     uploadTimerTick();
@@ -177,20 +180,31 @@ public class EventUploader {
    * uploading them.
    */
   synchronized void uploadTimerTick() {
-    JSONArray eventsToUpload;
+    final int bufferedBytes = pendingEventBuffer.numBufferedBytes();
+    RawJson eventsToUpload;
+    
     synchronized (uploadSynchronizer) {
       // If we have an upload request in flight, don't initiate another one now. 
-      if (pendingUploadSize != null)
+      if (uploadInProgress)
         return;
+    
+      if (bufferedBytes <= 0) {
+        // nothing to upload
+        pendingEventsReachedLimit = false;
+        return;
+      }
+        
+      eventsToUpload = new RawJson(){
+        @Override public void writeJSONBytes(OutputStream out) throws IOException {
+          out.write('[');
+          
+          // We subtract 1 here to eliminate the trailing comma after the last buffered event.
+          pendingEventBuffer.writeOldestBytes(out, bufferedBytes - 1);
+          
+          out.write(']');
+        }};
       
-      eventsToUpload = pendingEvents;
-      if (eventsToUpload.size() == 0)
-        return; // nothing to upload
-      
-      pendingUploadSize = pendingEventsSize;
-      
-      pendingEvents = new JSONArray();
-      pendingEventsSize = 0;
+      uploadInProgress = true;
       pendingEventsReachedLimit = false;
     }
     
@@ -212,7 +226,7 @@ public class EventUploader {
       }});
     
     JSONObject sessionInfo = new JSONObject();
-    sessionInfo.put("sessionId", sessionId);
+    sessionInfo.put("session", sessionId);
     sessionInfo.put("launchTime", launchTimeNs);
     
     if (ourIpAddress != null)
@@ -239,7 +253,9 @@ public class EventUploader {
       logService.uploadEvents(sessionId, sessionInfo, eventsToUpload, threadInfos);
     } finally {
       synchronized (uploadSynchronizer) {
-        pendingUploadSize = null;
+        pendingEventBuffer.discardOldestBytes(bufferedBytes);
+        uploadInProgress = false;
+        pendingEventsReachedLimit = false;
       }
     }
   }
@@ -323,17 +339,32 @@ public class EventUploader {
   private void addEventToBuffer(JSONObject eventJson) {
     long eventSize = SizeEstimator.estimateSize(eventJson);
     
+    boolean discardingDueToMemoryLimit;
     synchronized (uploadSynchronizer) {
-      long currentMemoryUsage = pendingEventsSize + (pendingUploadSize != null ? pendingUploadSize: 0);
-      if (pendingEventsReachedLimit || (memoryLimit != null && currentMemoryUsage + eventSize > memoryLimit)) {
-        Logging.warn("com.scalyr.api.logs: Discarding event, as buffer size of "
-            + memoryLimit + " bytes has been reached.");
-        pendingEventsReachedLimit = true;
-        return;
+      if (pendingEventsReachedLimit) {
+        discardingDueToMemoryLimit = true;
+      } else {
+        ByteArrayOutputStream stream = new ByteArrayOutputStream();
+        try {
+          eventJson.writeJSONBytes(stream);
+        } catch (IOException ex) {
+          // This should never happen, since we're working with in-memory data.
+          throw new RuntimeException(ex);
+        }
+        stream.write(',');
+        
+        if (pendingEventBuffer.append(stream.toByteArray())) {
+          discardingDueToMemoryLimit = false;
+        } else {
+          discardingDueToMemoryLimit = true;
+          pendingEventsReachedLimit = true;
+        }
       }
-      
-      pendingEvents.add(eventJson);
-      pendingEventsSize += eventSize + 4;
+    }
+    
+    if (discardingDueToMemoryLimit) {
+      Logging.warn("com.scalyr.api.logs: Discarding event, as buffer size of "
+          + memoryLimit + " bytes has been reached.");
     }
   }
   

@@ -1,6 +1,6 @@
 /*
  * Scalyr client library
- * Copyright 2011 Scalyr, Inc.
+ * Copyright 2012 Scalyr, Inc.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,14 +17,9 @@
 
 package com.scalyr.api.logs;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 
-import com.scalyr.api.TuningConstants;
 import com.scalyr.api.internal.Logging;
 import com.scalyr.api.internal.ScalyrUtil;
 
@@ -308,17 +303,10 @@ public class Events {
    * Wipe the state of the Events reporting system. Should only be used for internal tests.
    */
   public static synchronized void _reset(String artificialSessionId,
-      LogService logService, Integer memoryLimit, boolean autoUpload) {
+      LogService logService, int memoryLimit, boolean autoUpload) {
     if (uploaderInstance.get() != null)
       uploaderInstance.get().terminate();
     
     uploaderInstance.set(new EventUploader(logService, memoryLimit, artificialSessionId, autoUpload, null));
-  }
-  
-  /**
-   * Only for use by internal tests.
-   */
-  public static void _uploadTick() {
-    uploaderInstance.get().uploadTimerTick();
   }
 }

@@ -1,6 +1,6 @@
 /*
  * Scalyr client library
- * Copyright 2011 Scalyr, Inc.
+ * Copyright 2012 Scalyr, Inc.
  * 
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -42,6 +42,17 @@ import java.util.concurrent.atomic.AtomicInteger;
  */
 public class ScalyrUtil {
   public static final Charset utf8 = Charset.forName("UTF-8");
+  
+  /**
+   * Throw an exception if condition is false.
+   * 
+   * We use this instead of the built-in Java assert() mechanism, to avoid worries about whether assertions
+   * are enabled on the command line.
+   */
+  public static void Assert(boolean condition, String message) {
+    if (!condition)
+      throw new RuntimeException(message);
+  }
   
   /**
    * Equivalent to a.equals(b), but handles the case where a and/or b are null.
