@@ -17,7 +17,8 @@
 
 package com.scalyr.api.internal;
 
-import java.util.Date;
+import com.scalyr.api.LogHook;
+import com.scalyr.api.logs.Severity;
 
 /**
  * WARNING: this class, and all classes in the .internal package, should not be
@@ -25,25 +26,115 @@ import java.util.Date;
  * changes to the .internal package at any time.
  */
 public class Logging {
-  public static void info(String message) {
-    System.out.println(new Date() + ": " + message);
+  /**
+   * Hook which receives all internal messages logged by the Scalyr client. 
+   */
+  private static volatile LogHook hook = new LogHook.ThresholdLogger(Severity.info);
+  
+  /**
+   * Specify the LogHook object to process internal messages logged by the Scalyr client.
+   * Replaces any previous hook.
+   */
+  public static void setHook(LogHook value) {
+    hook = value;
   }
   
-  public static void info(String message, Throwable ex) {
-    System.out.println(new Date() + ": " + message);
-    ex.printStackTrace(System.out);
+  public static void log(Severity severity, String tag, String message) {
+    log(severity, tag, message, null);
   }
   
-  public static void warn(String message) {
-    System.out.println(new Date() + ": " + message);
+  /**
+   * Log a message regarding the internal functioning of the Scalyr client library.
+   * 
+   * @param severity Severity / importance of this message.
+   * @param tag An invariant identifier for this message; taken from one of the string
+   *     constants below.
+   * @param message Human-readable message.
+   * @param ex Exception associated with this message, or null.
+   */
+  public static void log(Severity severity, String tag, String message, Throwable ex) {
+    hook.log(severity, tag, message, ex);
   }
   
-  public static void warn(String message, Throwable ex) {
-    System.out.println(new Date() + ": " + message);
-    ex.printStackTrace(System.out);
+  /**
+   * Utility class used to limit log messages to a specified rate.
+   */
+  public static class LogLimiter {
+    /**
+     * Millisecond timestamp when this limiter last allowed a log event to go through,
+     * or null if we never have.
+     */
+    private Long lastLogTimeMs = null;
+    
+    /**
+     * Return true if it has been at least minIntervalMs since we last returned true.
+     */
+    public synchronized boolean allow(long minIntervalMs) {
+      long nowMs = ScalyrUtil.currentTimeMillis();
+      if (lastLogTimeMs == null || nowMs >= lastLogTimeMs + minIntervalMs) {
+        lastLogTimeMs = nowMs;
+        return true;
+      } else {
+        return false;
+      }
+    }
   }
   
-  public static void printStackTrace() {
-    new Exception().printStackTrace();
-  }
+  
+  // These constants are used for the tag attribute to log().
+  
+  /**
+   * Routine logging for communication with a Scalyr server.
+   */
+  public static final String tagServerCommunication = "server/communication";
+  
+  /**
+   * Error communicating with a Scalyr server.
+   */
+  public static final String tagServerError = "server/error";
+  
+  /**
+   * Backoff response from a Scalyr server.
+   */
+  public static final String tagServerBackoff = "server/error/backoff";
+  
+  /**
+   * Error accessing a local configuration file.
+   */
+  public static final String tagLocalConfigFileError = "local/error/configFile";
+  
+  /**
+   * I/O error accessing a local cache file.
+   */
+  public static final String tagKnobCacheIOError = "local/error/cacheFile";
+  
+  /**
+   * Local cache file corrupt.
+   */
+  public static final String tagKnobCacheCorrupt = "local/error/cacheFile/corrupt";
+  
+  /**
+   * Internal error in the client library.
+   */
+  public static final String tagInternalError = "local/error/internal";
+  
+  /**
+   * Scalyr Logs client discarding events due to local buffer overflow.
+   */
+  public static final String tagLogBufferOverflow = "local/error/logBufferOverflow";
+  
+  /**
+   * Knob file is not parseable as JSON.
+   */
+  public static final String tagKnobFileInvalid = "user/error/badKnobFile";
+  
+  /**
+   * Exception escaped from Gauge.sample().
+   */
+  public static final String tagGaugeThrewException = "user/error/gaugeFailed";
+  
+  /**
+   * Events.end() called with no matching start call.
+   */
+  public static final String tagMismatchedEnd = "user/error/mismatchedEnd";
 }

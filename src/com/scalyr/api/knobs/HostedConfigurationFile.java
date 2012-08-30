@@ -30,6 +30,7 @@ import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.internal.Sleeper;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.json.JSONParser;
+import com.scalyr.api.logs.Severity;
 
 /**
  * A file hosted on the Knobs service.
@@ -79,16 +80,19 @@ class HostedConfigurationFile extends ConfigurationFile {
     try {
       cacheFileContent = ScalyrUtil.readFileContent(cacheFile);
     } catch (UnsupportedEncodingException ex) {
-      Logging.warn("Error reading cache file [" + cacheFile.getAbsolutePath() + "]", ex);
+      Logging.log(Severity.warning, Logging.tagKnobCacheIOError,
+          "Error reading cache file [" + cacheFile.getAbsolutePath() + "]", ex);
       return;
     } catch (IOException ex) {
-      Logging.warn("Error reading cache file [" + cacheFile.getAbsolutePath() + "]", ex);
+      Logging.log(Severity.warning, Logging.tagKnobCacheIOError,
+          "Error reading cache file [" + cacheFile.getAbsolutePath() + "]", ex);
       return;
     }
     
     int headerEnd = cacheFileContent.indexOf('}');
     if (headerEnd <= 0) {
-      Logging.warn("Cachefile [" + cacheFile.getAbsolutePath() + "] does not contain a proper header");
+      Logging.log(Severity.warning, Logging.tagKnobCacheCorrupt,
+          "Cachefile [" + cacheFile.getAbsolutePath() + "] does not contain a proper header");
       return;
     }
     
@@ -104,7 +108,8 @@ class HostedConfigurationFile extends ConfigurationFile {
         setFileState(new FileState(version, cacheFileContent.substring(headerEnd + 1), new Date(createDate), new Date(modDate)));
       }
     } catch (Exception ex) {
-      Logging.warn("Error reading cache file [" + cacheFile.getAbsolutePath() + "]", ex);
+      Logging.log(Severity.warning, Logging.tagKnobCacheIOError,
+          "Error reading cache file [" + cacheFile.getAbsolutePath() + "]", ex);
     }
   }
   
@@ -145,7 +150,7 @@ class HostedConfigurationFile extends ConfigurationFile {
         
         while (!isClosed()) {
           try {
-            long startTime = System.currentTimeMillis();
+            long startTime = ScalyrUtil.currentTimeMillis();
             String rawResponse = knobService.getFile(getPathname(), expectedVersion, MAX_WAIT_TIME);
           
             JSONObject response = (JSONObject) new JSONParser().parse(rawResponse);
@@ -167,12 +172,12 @@ class HostedConfigurationFile extends ConfigurationFile {
               retryInterval = TuningConstants.MINIMUM_FETCH_INTERVAL;
               
               if (status.startsWith("success/noSuchFile")) {
-                updateStalenessBound(stalenessSlopLong + System.currentTimeMillis() - startTime);
+                updateStalenessBound(stalenessSlopLong + ScalyrUtil.currentTimeMillis() - startTime);
                 setFileState(new FileState(0, null, null, null));
               } else if (status.startsWith("success/unchanged")) {
-                updateStalenessBound(stalenessSlopLong + System.currentTimeMillis() - startTime);
+                updateStalenessBound(stalenessSlopLong + ScalyrUtil.currentTimeMillis() - startTime);
               } else {
-                updateStalenessBound(stalenessSlopLong + System.currentTimeMillis() - startTime);
+                updateStalenessBound(stalenessSlopLong + ScalyrUtil.currentTimeMillis() - startTime);
                 setFileState(new FileState(Converter.toLong(response.get("version")),
                     (String) response.get("content"),
                     new Date((long)Converter.toLong(response.get("createDate"))),
@@ -186,18 +191,20 @@ class HostedConfigurationFile extends ConfigurationFile {
               else
                 retryInterval = Math.min(retryInterval*2, TuningConstants.MAXIMUM_FETCH_INTERVAL);
               
-              if (status.startsWith("error/client/limit")) {
-                Logging.warn("Configuration server returned status [" + status + "], message [" +
+              if (status.startsWith("error/server/backoff")) {
+                Logging.log(Severity.warning, Logging.tagServerBackoff,
+                    "Configuration server returned status [" + status + "], message [" +
                     response.get("message") + "]; backing off");
                 
               } else {
-                Logging.warn("Bad response from configuration server (status [" + status + "], message [" +
+                Logging.log(Severity.warning, Logging.tagServerError,
+                    "Bad response from configuration server (status [" + status + "], message [" +
                     response.get("message") + "])");
               }
             }
           } catch (Exception ex) {
-            // Logging.log("initiateAsyncFetch " + id + ": exception");
-            Logging.warn("Error communicating with the configuration server(s) [" +
+            Logging.log(Severity.warning, Logging.tagServerError,
+                "Error communicating with the configuration server(s) [" +
                 knobService.getServerAddresses() + "] to fetch file [" + getPathname() + "]",
                 ex);
           }

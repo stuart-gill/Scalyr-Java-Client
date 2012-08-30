@@ -85,7 +85,8 @@ public abstract class Gauge {
             Events.info(attributes);
           }
         } catch (Exception ex) {
-          Logging.warn("Exception in Gauge [" + entry.getKey() + "] (attributes " + entry.getValue() + ")", ex);
+          Logging.log(Severity.warning, Logging.tagGaugeThrewException,
+              "Exception in Gauge [" + entry.getKey() + "] (attributes " + entry.getValue() + ")", ex);
         }
       }
     }

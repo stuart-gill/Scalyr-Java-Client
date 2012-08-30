@@ -26,6 +26,7 @@ import java.util.TimerTask;
 
 import com.scalyr.api.internal.Logging;
 import com.scalyr.api.internal.ScalyrUtil;
+import com.scalyr.api.logs.Severity;
 
 /**
  * ConfigurationFile implementation that reads from a file in the local filesystem.
@@ -101,7 +102,7 @@ public class LocalConfigurationFile extends ConfigurationFile {
     // Kick off a timer task to periodically check for changes to the file.
     synchronized (LocalConfigurationFile.class) {
       if (pollTimer == null)
-        pollTimer = new Timer();
+        pollTimer = new Timer("LocalConfigurationFile poller", true);
     }
     
     pollTask = new TimerTask(){
@@ -109,7 +110,8 @@ public class LocalConfigurationFile extends ConfigurationFile {
         try {
           fetchFileState(false);
         } catch (Exception ex) {
-          Logging.warn("Error reading local configuration file [" + file.getAbsolutePath() + "]", ex);
+          Logging.log(Severity.warning, Logging.tagLocalConfigFileError,
+              "Error reading local configuration file [" + file.getAbsolutePath() + "]", ex);
         }
       }};
     pollTimer.schedule(pollTask, pollIntervalMs, pollIntervalMs);
@@ -151,7 +153,7 @@ public class LocalConfigurationFile extends ConfigurationFile {
     // two changes in the same second, and the second change doesn't modify the file's length, we might miss
     // it.
     if (lastModified != null && lastModified == newLastModified && fileLen != null && fileLen == newLength &&
-        unchangedInARow >= 2 && System.currentTimeMillis() >= unchangedStartTime + 2000) {
+        unchangedInARow >= 2 && ScalyrUtil.currentTimeMillis() >= unchangedStartTime + 2000) {
       updateStalenessBound(0);
       return;
     }
@@ -165,10 +167,12 @@ public class LocalConfigurationFile extends ConfigurationFile {
       try {
         newFileContent = ScalyrUtil.readFileContent(file);
       } catch (UnsupportedEncodingException ex) {
-        Logging.warn("Error reading file [" + file.getAbsolutePath() + "]", ex);
+        Logging.log(Severity.warning, Logging.tagLocalConfigFileError,
+            "Error reading file [" + file.getAbsolutePath() + "]", ex);
         return;
       } catch (IOException ex) {
-        Logging.warn("Error reading file [" + file.getAbsolutePath() + "]", ex);
+        Logging.log(Severity.warning, Logging.tagLocalConfigFileError,
+            "Error reading file [" + file.getAbsolutePath() + "]", ex);
         return;
       }
     } else {
@@ -178,7 +182,7 @@ public class LocalConfigurationFile extends ConfigurationFile {
     updateStalenessBound(0);
     if (!initialFetch && ScalyrUtil.equals(fileContent, newFileContent)) {
       if (unchangedInARow == 0)
-        unchangedStartTime = System.currentTimeMillis();
+        unchangedStartTime = ScalyrUtil.currentTimeMillis();
         
       unchangedInARow++;
       return;

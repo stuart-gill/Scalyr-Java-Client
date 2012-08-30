@@ -166,6 +166,10 @@ public class EventAttributes {
     return values.toString();
   }
   
+  @Override public boolean equals(Object o) {
+    return (o instanceof EventAttributes) && values.equals(((EventAttributes)o).values);
+  }
+  
   /**
    * Return all attributes -- a collection of {attribute name, attribute value} pairs.
    */

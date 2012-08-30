@@ -57,11 +57,21 @@ public class CircularByteArray {
   
   /**
    * Add length bytes, beginning at data[offset], to the buffer, and return true.
-   * If the data will not fit in its entirely, do nothing (don't add a fragment)
+   * If the data will not fit in its entirety, do nothing (don't add a fragment)
    * and return false.
    */
-  public synchronized boolean append(byte[] newData, int offsetInNewData, int newDataLength) {
-    int spaceAvailable = rawBuffer.length - numBufferedBytes;
+  public boolean append(byte[] newData, int offsetInNewData, int newDataLength) {
+    return append(newData, offsetInNewData, newDataLength, 0);
+  }
+  
+  /**
+   * Add length bytes, beginning at data[offset], to the buffer, and return true.
+   * If the data will not fit in its entirely, with reserveLength bytes left over,
+   * then do nothing (don't add a fragment) and return false.
+   */
+  public synchronized boolean append(byte[] newData, int offsetInNewData, int newDataLength,
+      int reserveLength) {
+    int spaceAvailable = rawBuffer.length - numBufferedBytes - reserveLength;
     if (spaceAvailable < newDataLength)
       return false;
     

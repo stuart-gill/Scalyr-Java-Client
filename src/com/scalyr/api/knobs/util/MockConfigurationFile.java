@@ -19,6 +19,7 @@ package com.scalyr.api.knobs.util;
 
 import java.util.Date;
 
+import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.knobs.ConfigurationFile;
 
 /**
@@ -26,7 +27,7 @@ import com.scalyr.api.knobs.ConfigurationFile;
  * Useful to supply hard-coded configurations for tests of Knobs-based code.
  */
 public class MockConfigurationFile extends ConfigurationFile {
-  private Date creationDate = new Date(System.currentTimeMillis());
+  private Date creationDate = ScalyrUtil.currentDate();
   private int versionCounter = 0;
   
   private String content;
@@ -39,6 +40,6 @@ public class MockConfigurationFile extends ConfigurationFile {
   public void setContent(String newContent) {
     content = newContent;
     
-    setFileState(new FileState(++versionCounter, content, creationDate, new Date(System.currentTimeMillis())));
+    setFileState(new FileState(++versionCounter, content, creationDate, ScalyrUtil.currentDate()));
   }
 }

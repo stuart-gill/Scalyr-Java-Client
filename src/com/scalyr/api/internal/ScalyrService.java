@@ -33,6 +33,7 @@ import com.scalyr.api.ScalyrNetworkException;
 import com.scalyr.api.TuningConstants;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.json.JSONParser;
+import com.scalyr.api.logs.Severity;
 
 /**
  * Base class for encapsulating the raw HTTP-level API to a Scalyr service.
@@ -114,16 +115,18 @@ public abstract class ScalyrService {
 
   /**
    * Invoke methodName on a selected server, sending the specified parameters as the request
-   * body. Parse the response as JSON.
+   * body. Return the (JSON-format) response.
    * <p>
    * If "retriable" error (e.g. a network error) occurs, we retry on another server. We continue
    * retrying until a non-retriable error occurs, there are no more servers to try, or a reasonable
    * deadline (TuningConstants.MAXIMUM_RETRY_PERIOD_MS) expires.
+   * <p>
+   * This method should not be called directly. Instead, work through method-specific wrappers.
    * 
    * @throws ScalyrException
    * @throws ScalyrNetworkException
    */
-  protected String invokeApi(String methodName, JSONObject parameters) {
+  public String invokeApi(String methodName, JSONObject parameters) {
     // Produce a shuffled copy of the server addresses, so that load is distributed
     // across the servers.
     int N = serverAddresses.length;
@@ -138,11 +141,11 @@ public abstract class ScalyrService {
     }
     
     // Try the operation on each server in turn.
-    long startTimeMs = System.currentTimeMillis();
+    long startTimeMs = ScalyrUtil.currentTimeMillis();
     int serverIndex = 0;
     while (true) {
       String serverAddress = shuffled[serverIndex];
-      long requestStartTimeMs = System.currentTimeMillis();
+      long requestStartTimeMs = ScalyrUtil.currentTimeMillis();
       try {
         return invokeApiOnServer(serverAddress, methodName, parameters);
       } catch (ScalyrNetworkException ex) {
@@ -151,28 +154,31 @@ public abstract class ScalyrService {
         // rethrow the exception.
         serverIndex++;
         
-        long totalElapsedMs = System.currentTimeMillis() - startTimeMs;
+        long totalElapsedMs = ScalyrUtil.currentTimeMillis() - startTimeMs;
         
         if (serverIndex >= N) {
-          long requestElapsedMs = System.currentTimeMillis() - requestStartTimeMs;
-          Logging.warn("invokeApi: " + methodName + " failed on " + serverAddress
+          long requestElapsedMs = ScalyrUtil.currentTimeMillis() - requestStartTimeMs;
+          Logging.log(Severity.warning, Logging.tagServerError,
+              "invokeApi: " + methodName + " failed on " + serverAddress
               + " (after " + requestElapsedMs + " milliseconds); no more servers to try, so giving up", ex);
           throw ex;
         } else if (totalElapsedMs >= TuningConstants.MAXIMUM_RETRY_PERIOD_MS) {
-          Logging.warn("invokeApi: " + methodName + " failed on " + serverAddress
+          Logging.log(Severity.warning, Logging.tagServerError,
+              "invokeApi: " + methodName + " failed on " + serverAddress
               + "; maximum retry period of " + TuningConstants.MAXIMUM_RETRY_PERIOD_MS
               + " ms exceeded, so giving up", ex);
           throw ex;
         }
         
-        Logging.warn("invokeApi: " + methodName + " failed on " + serverAddress + "; will retry", ex);
+        Logging.log(Severity.warning, Logging.tagServerError,
+            "invokeApi: " + methodName + " failed on " + serverAddress + "; will retry", ex);
       }
     }
   }
 
   /**
    * Invoke serverAddress/methodName on the server, sending the specified parameters as the request
-   * body. Parse the response as JSON.
+   * body. Return the (JSON-format) response.
    * 
    * @throws ScalyrException
    * @throws ScalyrNetworkException
@@ -181,6 +187,7 @@ public abstract class ScalyrService {
     HttpURLConnection connection = null;  
     try {
       // Send the request.
+      long startTimeMs = ScalyrUtil.currentTimeMillis();
       URL url = new URL(serverAddress + methodName);
       connection = (HttpURLConnection) url.openConnection();
       connection.setRequestMethod("POST");
@@ -200,7 +207,9 @@ public abstract class ScalyrService {
       OutputStream output = connection.getOutputStream();
       parameters.writeJSONBytes(output);
       output.flush();
-      output.close();
+      
+      // We no longer explicitly close, so that HTTP keepalive can function.
+      // output.close();
       
       // Retrieve the response.
       int responseCode = connection.getResponseCode();
@@ -208,7 +217,17 @@ public abstract class ScalyrService {
       InputStream input = connection.getInputStream();
       BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"));
       String responseText = readEntireStream(reader);
-      reader.close();
+      
+      // We no longer explicitly close, so that HTTP keepalive can function.
+      // reader.close();
+      
+      long runtimeMs = ScalyrUtil.currentTimeMillis() - startTimeMs;
+      Logging.log(Severity.fine, Logging.tagServerCommunication,
+          serverAddress + "/" + methodName + ": "
+          + runtimeMs + " ms, "
+          + requestLength + " bytes up, "
+          + responseText.length() + " chars down, response status " + responseCode
+          );
       
       if (responseCode != 200) {
         // TODO: log StringUtil.noisyTruncate(response.responseBody.trim(), 1000));
@@ -217,18 +236,26 @@ public abstract class ScalyrService {
       }
       
       Object responseJson = new JSONParser().parse(responseText);
-      if (responseJson instanceof JSONObject)
+      if (responseJson instanceof JSONObject) {
+        Object status = ((JSONObject)responseJson).get("status");
+        Logging.log(Severity.finer, Logging.tagServerCommunication,
+            "Response status [" + (status == null ? "(none)" : status) + "]"
+            );
+        
         return responseText;
-      else
+      } else {
         throw new ScalyrException("Malformed response from Scalyr server");
+      }
     } catch (Exception ex) {
       if (ex instanceof SocketTimeoutException)
         throw new ScalyrNetworkException("Timeout while communicating with Scalyr server", ex);
       else
         throw new ScalyrNetworkException("Error while communicating with Scalyr server", ex);
     } finally {
-      if (connection != null)
-        connection.disconnect(); 
+      // We no longer explicitly disconnect, so that HTTP keepalive can function. 
+      // 
+      // if (connection != null)
+      //   connection.disconnect(); 
     }
   }
   

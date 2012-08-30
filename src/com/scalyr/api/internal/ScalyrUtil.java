@@ -28,10 +28,12 @@ import java.io.OutputStreamWriter;
 import java.io.Reader;
 import java.io.UnsupportedEncodingException;
 import java.nio.charset.Charset;
+import java.util.Date;
 import java.util.concurrent.Executor;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * Miscellaneous utility methods.
@@ -59,22 +61,6 @@ public class ScalyrUtil {
    */
   public static boolean equals(Object a, Object b) {
     return (a == null) ? (b == null) : a.equals(b);
-  }
-  
-  /**
-   * Value which must be added to System.nanoTime() to yield # of nanoseconds since the epoch.
-   */
-  private static Long nanoTimeOffset = null;
-  
-  static {
-    nanoTimeOffset = System.currentTimeMillis() * 1000000L - System.nanoTime();
-  }
-  
-  /**
-   * Equivalent to System.nanoTime(), but based off the 1/1/1970 epoch like currentTimeMillis().
-   */
-  public static long nanoTime() {
-    return System.nanoTime() + nanoTimeOffset;
   }
   
   /**
@@ -175,4 +161,66 @@ public class ScalyrUtil {
       t.setDaemon(true);
       return t;
     }});
+  
+  /**
+   * Most recent value passed to setCustomTimeMs, or -1 if no setCustomTimeMs is in
+   * effect.
+   */
+  private static final AtomicLong customTimeMs = new AtomicLong(-1);
+  
+  /**
+   * Equivalent to System.currentTimeMillis(), but the return value can be overridden for
+   * testing purposes. 
+   */
+  public static long currentTimeMillis() {
+    long custom = customTimeMs.get();
+    if (custom == -1)
+      return System.currentTimeMillis();
+    else
+      return custom;
+  }
+  
+  public static Date currentDate() {
+    return new Date(currentTimeMillis());
+  }
+  
+  /**
+   * Specify the value to be returned by subsequent calls to currentTimeMillis.
+   */
+  public static void setCustomTimeMs(long value) {
+    customTimeMs.set(value);
+  }
+  
+  /**
+   * Advance the current custom time by the specified delta.
+   */
+  public static void advanceCustomTimeMs(long delta) {
+    customTimeMs.addAndGet(delta);
+  }
+  
+  /**
+   * Clear any outstanding setCustomTimeMs override, so that subsequent calls to
+   * currentTimeMillis() will return the actual system clock.
+   */
+  public static void removeCustomTime() {
+    customTimeMs.set(-1);
+  }
+  
+  
+  /**
+   * Value which must be added to System.nanoTime() to yield # of nanoseconds since the epoch.
+   */
+  private static Long nanoTimeOffset = null;
+  
+  static {
+    nanoTimeOffset = System.currentTimeMillis() * 1000000L - System.nanoTime();
+  }
+  
+  /**
+   * Equivalent to System.nanoTime(), but based off the 1/1/1970 epoch like currentTimeMillis().
+   * Does not respect setCustomTimeMs.
+   */
+  public static long nanoTime() {
+    return System.nanoTime() + nanoTimeOffset;
+  }
 }

@@ -25,14 +25,17 @@ import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import com.scalyr.api.Callback;
 import com.scalyr.api.ScalyrDeadlineException;
 import com.scalyr.api.ScalyrException;
 import com.scalyr.api.internal.Logging;
+import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.json.JSONParser;
 import com.scalyr.api.json.ParseException;
+import com.scalyr.api.logs.Severity;
 
 /**
  * Abstract interface for a configuration file.
@@ -46,6 +49,11 @@ import com.scalyr.api.json.ParseException;
  * call close().
  */
 public abstract class ConfigurationFile {
+  /**
+   * Counter which is incremented whenever any ConfigurationFile's contents change.
+   */
+  static AtomicInteger globalChangeCounter = new AtomicInteger(0);
+  
   /**
    * Our pathname within the repository.
    */
@@ -141,11 +149,11 @@ public abstract class ConfigurationFile {
     if (timeOfLastPoll == null)
       return null;
     
-    return System.currentTimeMillis() - timeOfLastPoll;
+    return ScalyrUtil.currentTimeMillis() - timeOfLastPoll;
   }
   
   protected synchronized void updateStalenessBound(long slopMs) {
-    timeOfLastPoll = System.currentTimeMillis() + slopMs;
+    timeOfLastPoll = ScalyrUtil.currentTimeMillis() + slopMs;
   }
   
   /**
@@ -163,12 +171,13 @@ public abstract class ConfigurationFile {
         return;
       }
       
+      globalChangeCounter.incrementAndGet();
       fileState = value;
       cachedJson = null;
       cachedJsonError = null;
       noteNewState();
       notifyAll();
-    
+      
       listenerSnapshot = new ArrayList<Callback<ConfigurationFile>>(updateListeners);
     }
     
@@ -302,11 +311,11 @@ public abstract class ConfigurationFile {
           parsed = new JSONParser().parse(new StringReader(currentState.content));
       } catch (IOException ex) {
         cachedJsonError = new BadConfigurationFileException("IOException while parsing JSON file", ex);
-        Logging.warn("Error parsing [" + this + "] as JSON", cachedJsonError);
+        Logging.log(Severity.warning, Logging.tagKnobFileInvalid, "Error parsing [" + this + "] as JSON", cachedJsonError);
         throw cachedJsonError;
       } catch (ParseException ex) {
         cachedJsonError = new BadConfigurationFileException("File is not in valid JSON format");
-        Logging.warn("Error parsing [" + this + "] as JSON", cachedJsonError);
+        Logging.log(Severity.warning, Logging.tagKnobFileInvalid, "Error parsing [" + this + "] as JSON", cachedJsonError);
         throw cachedJsonError;
       }
       if (parsed instanceof JSONObject) {
@@ -314,7 +323,7 @@ public abstract class ConfigurationFile {
       } else {
         cachedJsonError = new BadConfigurationFileException("File is not in valid JSON format or does not have" +
         		" an object at the top level (does not begin with an open-brace)");
-        Logging.warn("Error parsing [" + this + "] as JSON", cachedJsonError);
+        Logging.log(Severity.warning, Logging.tagKnobFileInvalid, "Error parsing [" + this + "] as JSON", cachedJsonError);
         throw cachedJsonError;
       }
     }
@@ -340,12 +349,12 @@ public abstract class ConfigurationFile {
     if (fileState != null)
       return fileState;
     
-    long deadlineTime = (timeoutInMs != null) ? (System.currentTimeMillis() + timeoutInMs) : 0;  
+    long deadlineTime = (timeoutInMs != null) ? (ScalyrUtil.currentTimeMillis() + timeoutInMs) : 0;  
     
     while (fileState == null) {
       try {
         if (timeoutInMs != null) {
-          long msRemaining = deadlineTime - System.currentTimeMillis();
+          long msRemaining = deadlineTime - ScalyrUtil.currentTimeMillis();
           if (msRemaining > 0)
             this.wait(msRemaining);
           else
@@ -364,7 +373,10 @@ public abstract class ConfigurationFile {
   }
   
   /**
-   * Register a callback to be invoked whenever the file's state changes.
+   * Register a callback to be invoked whenever the file's state changes. Each time there is a
+   * change to the file, the callback will be invoked. (Note that, unlike Zookeeper "watches",
+   * there is no need to re-register your callback after each change. You only need to call
+   * addUpdateListener once.)
    * <p>
    * If the callback was already registered, we do nothing (it remains registered).
    */

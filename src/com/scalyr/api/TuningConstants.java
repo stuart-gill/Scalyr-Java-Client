@@ -54,12 +54,77 @@ public class TuningConstants {
   public static final int MAXIMUM_EVENT_ATTRIBUTE_LENGTH = 1000;
   
   /**
-   * Batching interval for uploading events to the Scalyr Logs service.
+   * Interval between warnings that events are being discarded due to buffer overflow.
    */
-  public static final int EVENT_UPLOAD_INTERVAL_MS = 5000;
+  public static final int EVENT_UPLOAD_MEMORY_WARNING_INTERVAL_MS = 10000;
   
   /**
    * Interval between sampling of registered Gauges.
    */
   public static final int GAUGE_SAMPLE_INTERVAL_MS = 60000;
+  
+  /**
+   * Maximum payload size for a single invocation of LogService.uploadEvents.
+   * This is the maximum size, in bytes, of the serialized events array. 
+   */
+  public static final int MAX_EVENT_UPLOAD_BYTES = 1024 * 1024;
+  
+  /**
+   * Payload size which triggers invocation of LogService.uploadEvents. We wait for
+   * this payload size (or EVENT_UPLOAD_TIME_THRESHOLD_MS).
+   */
+  public static final int EVENT_UPLOAD_BYTE_THRESHOLD = 100 * 1024;
+  
+  /**
+   * Interval for checking whether to upload a new batch of events to the Scalyr
+   * Logs service. We don't necessarily upload this often, but this specifies how
+   * frequently we evaluate to see whether it's time to upload a new batch.
+   */
+  public static final int EVENT_UPLOAD_CHECK_INTERVAL = 1000;
+  
+  /**
+   * Time delay which triggers invocation of LogService.uploadEvents. We wait for
+   * this time delay (or EVENT_UPLOAD_BYTE_THRESHOLD). We choose a value below 5
+   * seconds to prevent keepalive connections from being dropped.
+   */
+  public static final int EVENT_UPLOAD_TIME_THRESHOLD_MS = 4500;
+  
+  /**
+   * Minimum time delay between event batch uploads (measured start-to-start;
+   * deliberately set slightly shorter than EVENT_UPLOAD_CHECK_INTERVAL, so that
+   * we can initiate an upload on each check).
+   */
+  public static final int MIN_EVENT_UPLOAD_SPACING_MS = 900;
+  
+  /**
+   * Maximum time delay between event batch uploads. This comes into play when
+   * the server issues backoff responses and we begin increasing our interval.
+   */
+  public static final int MAX_EVENT_UPLOAD_SPACING_MS = 50000;
+  
+  /**
+   * Factor by which we adjust our upload spacing after a backoff response.
+   */
+  public static final double UPLOAD_SPACING_FACTOR_ON_BACKOFF = 1.5;
+  
+  /**
+   * Factor by which we adjust our upload spacing after a successful upload.
+   */
+  public static final double UPLOAD_SPACING_FACTOR_ON_SUCCESS = 0.9;
+  
+  /**
+   * Percentage of EventUploader's buffer that we reserve for use by end
+   * events and buffer-overflow messages. Start events and leaf events
+   * will not use this space. This ensures that end events usually do not
+   * need to be discarded, thus preserving the integrity of event nesting.
+   */
+  public static final int EVENT_BUFFER_RESERVED_PERCENT = 5;
+  
+  /**
+   * Percentage of EventUploader's buffer that we reserve for use only
+   * for buffer-overflow messages. End events won't use this space (nor
+   * will start or leaf events). This ensures that we (almost) always have
+   * room to at least record a buffer-overflow message.
+   */
+  public static final int EVENT_BUFFER_END_EVENT_RESERVED_PERCENT = 1;
 }

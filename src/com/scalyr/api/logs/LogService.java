@@ -55,7 +55,7 @@ public class LogService extends ScalyrService {
    * @param events The events to upload (a JSON array).
    * @param threadInfos Optional; contains information for the threads referenced in the events array.
    * 
-   * @return The response from the server. See <a href='https://www.scalyr.com/httpApi'>scalyr.com/httpApi</a>.
+   * @return The JSON-formatted response from the server. See <a href='https://www.scalyr.com/httpApi'>scalyr.com/httpApi</a>.
    * 
    * @throws ScalyrException
    * @throws ScalyrNetworkException
@@ -76,7 +76,7 @@ public class LogService extends ScalyrService {
     return invokeApi("addEvents", parameters);
   }
   
-  static final int SPAN_TYPE_LEAF  = 0;
-  static final int SPAN_TYPE_START = 1;
-  static final int SPAN_TYPE_END   = 2;
+  public static final int SPAN_TYPE_LEAF  = 0;
+  public static final int SPAN_TYPE_START = 1;
+  public static final int SPAN_TYPE_END   = 2;
 }

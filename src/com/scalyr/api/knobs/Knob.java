@@ -21,6 +21,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.scalyr.api.Callback;
 import com.scalyr.api.Converter;
@@ -28,6 +29,7 @@ import com.scalyr.api.ScalyrDeadlineException;
 import com.scalyr.api.internal.Logging;
 import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONObject;
+import com.scalyr.api.logs.Severity;
 
 /**
  * Encapsulates a specific entry in a JSON-format configuration file.
@@ -65,6 +67,12 @@ public class Knob {
   private Object value;
   
   /**
+   * Value of ConfigurationFile.globalChangeCounter when we last updated our value. Undefined if
+   * hasValue is false.
+   */
+  private int globalChangeCounter;
+  
+  /**
    * Callback used to listen for changes in the underlying file, or null if we are not
    * currently listening. We listen if and only if updateListeners is nonempty.
    */
@@ -76,14 +84,34 @@ public class Knob {
   private Set<Callback<Knob>> updateListeners = new HashSet<Callback<Knob>>();
   
   /**
+   * List of files to be used if no files were explicitly specified. Null until initialized by
+   * a call to setDefaultFiles.
+   */
+  private static AtomicReference<ConfigurationFile[]> defaultFiles = new AtomicReference<ConfigurationFile[]>(null);
+  
+  /**
+   * Specify a default list of configuration files. This will be used for any Knob in which no file list was specified.
+   * Existing Knobs are not affected by changes to the default file list.
+   */
+  public static void setDefaultFiles(ConfigurationFile[] files) {
+    defaultFiles.set(files);
+  }
+  
+  /**
    * @param key The key to look for (a fieldname of the top-level JSON object in the file).
    * @param defaultValue Value to return from {@link #get()} if the file does not exist or does not
    *     contain the key.
    * @param files The files in which we look for the value. We use the first file that
-   *     defines the specified key.
+   *     defines the specified key. If no files are specified, we use defaultFiles
    */
   public Knob(java.lang.String key, Object defaultValue, ConfigurationFile ... files) {
-    this.files = files;
+    if (files.length > 0) {
+      this.files = files;
+    } else {
+      this.files = defaultFiles.get();
+      if (this.files == null)
+        throw new RuntimeException("Must call setDefaultFiles before creating a Knob with no ConfigurationFiles");
+    }
     this.key = key;
     this.defaultValue = defaultValue;
   }
@@ -154,14 +182,20 @@ public class Knob {
    * @throws ScalyrDeadlineException
    */
   public Object getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-    long entryTime = (timeoutInMs != null) ? System.currentTimeMillis() : 0;
+    int globalChangeCounterSnapshot = ConfigurationFile.globalChangeCounter.get();
+    synchronized (this) {
+      if (hasValue && globalChangeCounter == globalChangeCounterSnapshot)
+        return value;
+    }
+    
+    long entryTime = (timeoutInMs != null) ? ScalyrUtil.currentTimeMillis() : 0;
     
     Object newValue = defaultValue;
     for (ConfigurationFile file : files) {
       JSONObject parsedFile;
       try {
         if (timeoutInMs != null) {
-          long elapsed = Math.max(System.currentTimeMillis() - entryTime, 0);
+          long elapsed = Math.max(ScalyrUtil.currentTimeMillis() - entryTime, 0);
           parsedFile = file.getAsJsonWithTimeout(timeoutInMs - elapsed, timeoutInMs);
         } else {
           parsedFile = file.getAsJson();
@@ -169,7 +203,8 @@ public class Knob {
       } catch (BadConfigurationFileException ex) {
         parsedFile = null;
         
-        Logging.info("Knob: ignoring file [" + file + "]: it does not contain valid JSON");
+        Logging.log(Severity.info, Logging.tagKnobFileInvalid,
+            "Knob: ignoring file [" + file + "]: it does not contain valid JSON");
       }
       
       if (parsedFile != null && parsedFile.containsKey(key)) {
@@ -184,6 +219,7 @@ public class Knob {
       
       value = newValue;
       hasValue = true;
+      globalChangeCounter = globalChangeCounterSnapshot;
       
       if (!hadValue || !ScalyrUtil.equals(value, oldValue)) {
         List<Callback<Knob>> listenerSnapshot = new ArrayList<Callback<Knob>>(updateListeners);
