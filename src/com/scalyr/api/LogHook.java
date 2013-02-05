@@ -20,6 +20,7 @@ package com.scalyr.api;
 import java.util.Date;
 
 import com.scalyr.api.internal.Logging;
+import com.scalyr.api.internal.SimpleRateLimiter;
 import com.scalyr.api.logs.Severity;
 
 /**
@@ -39,16 +40,52 @@ public abstract class LogHook {
   public static class ThresholdLogger extends LogHook {
     private final Severity minSeverity;
     
+    /**
+     * Used to throttle the number of lines we output to stdout.
+     */
+    private final SimpleRateLimiter rateLimiter;
+    
+    /**
+     * Separate throttler used for tagKnobFileInvalid. This message is sometimes
+     * generated in large bursts; we throttle it separately to avoid poisioning
+     * other log output.
+     */
+    private final SimpleRateLimiter knobFileInvalidRateLimiter;
+    
+    /**
+     * Used to throttle warning messages indicating that rateLimiter has kicked in.
+     */
+    private final SimpleRateLimiter overflowLimiter = new SimpleRateLimiter(
+        1.0 / TuningConstants.DIAGNOSTIC_OVERFLOW_WARNING_INTERVAL_SECS, 1.0);
+    
     public ThresholdLogger(Severity minSeverity) {
+      this(minSeverity,
+          new SimpleRateLimiter(TuningConstants.MAX_DIAGNOSTIC_MESSAGES_PER_SECOND,
+              TuningConstants.MAX_DIAGNOSTIC_MESSAGE_BURST),
+          new SimpleRateLimiter(TuningConstants.MAX_KNOBFILEINVALID_MESSAGES_PER_SECOND,
+              TuningConstants.MAX_KNOBFILEINVALID_MESSAGE_BURST));
+    }
+    
+    public ThresholdLogger(Severity minSeverity, SimpleRateLimiter rateLimiter, SimpleRateLimiter knobFileInvalidRateLimiter) {
       this.minSeverity = minSeverity;
+      this.rateLimiter = rateLimiter;
+      this.knobFileInvalidRateLimiter = knobFileInvalidRateLimiter; 
     }
     
     @Override public void log(Severity severity, String tag, String message, Throwable ex) {
       // Log all messages at or above minSeverity to stdout.
       if (severity.ordinal() >= minSeverity.ordinal()) {
-        System.out.println(new Date() + ": " + tag + " (" + message + ")");
-        if (ex != null)
-          ex.printStackTrace(System.out);
+        SimpleRateLimiter limiter = (tag.equals(Logging.tagKnobFileInvalid)) ? knobFileInvalidRateLimiter : rateLimiter;
+        if (limiter.consume(1.0)) {
+          System.out.println(new Date() + ": " + tag + " (" + message + ")");
+          if (ex != null)
+            ex.printStackTrace(System.out);
+        } else {
+          if (overflowLimiter.consume(1.0)) {
+            System.out.println(new Date() + ": WARNING -- diagnostic messages have exceeded "
+                + limiter.fillRatePerMs * 1000 + " messages/second; temporarily throttling output");
+          }
+        }
       }
     }
   }

@@ -22,14 +22,8 @@ package com.scalyr.api.json;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.Writer;
 
 public interface JSONStreamAware {
-  /**
-   * write JSON string to out.
-   */
-  void writeJSONString(Writer out) throws IOException;
-  
   /**
    * Write as UTF8-encoded JSON.
    */

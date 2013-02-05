@@ -17,6 +17,7 @@
 
 package com.scalyr.api.logs;
 
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,6 +38,12 @@ public class EventAttributes {
   
   /**
    * Construct a one-entry attribute list.
+   * 
+   * @param key The attribute name. It is best to use standard identifiers (letters, digits, and
+   * underscores, not beginning with a digit), as these are easier to work with in the Scalyr Logs
+   * user interface.
+   * 
+   * @param value The attribute value.
    */
   public EventAttributes(String key, Object value) {
     put(key, value);
@@ -44,6 +51,12 @@ public class EventAttributes {
   
   /**
    * Construct a two-entry attribute list.
+   * 
+   * @param key1 The attribute name. It is best to use standard identifiers (letters, digits, and
+   * underscores, not beginning with a digit), as these are easier to work with in the Scalyr Logs
+   * user interface.
+   * 
+   * @param value1 The attribute value.
    */
   public EventAttributes(String key1, Object value1, String key2, Object value2) {
     put(key1, value1);
@@ -52,6 +65,12 @@ public class EventAttributes {
   
   /**
    * Construct a three-entry attribute list.
+   * 
+   * @param key1 The attribute name. It is best to use standard identifiers (letters, digits, and
+   * underscores, not beginning with a digit), as these are easier to work with in the Scalyr Logs
+   * user interface.
+   * 
+   * @param value1 The attribute value.
    */
   public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3) {
     put(key, value);
@@ -61,6 +80,12 @@ public class EventAttributes {
   
   /**
    * Construct a four-entry attribute list.
+   * 
+   * @param key1 The attribute name. It is best to use standard identifiers (letters, digits, and
+   * underscores, not beginning with a digit), as these are easier to work with in the Scalyr Logs
+   * user interface.
+   * 
+   * @param value1 The attribute value.
    */
   public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3,
       String key4, Object value4) {
@@ -72,6 +97,12 @@ public class EventAttributes {
   
   /**
    * Construct a five-entry attribute list.
+   * 
+   * @param key1 The attribute name. It is best to use standard identifiers (letters, digits, and
+   * underscores, not beginning with a digit), as these are easier to work with in the Scalyr Logs
+   * user interface.
+   * 
+   * @param value1 The attribute value.
    */
   public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3,
       String key4, Object value4, String key5, Object value5) {
@@ -83,7 +114,14 @@ public class EventAttributes {
   }
   
   /**
-   * Construct a six-entry attribute list.
+   * Construct a six-entry attribute list. (For more than six attributes, use {@link #EventAttributes(Object[])},
+   * or add attributes individually using {@link #put(String,Object)}.)
+   * 
+   * @param key1 The attribute name. It is best to use standard identifiers (letters, digits, and
+   * underscores, not beginning with a digit), as these are easier to work with in the Scalyr Logs
+   * user interface.
+   * 
+   * @param value1 The attribute value.
    */
   public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3,
       String key4, Object value4, String key5, Object value5, String key6, Object value6) {
@@ -98,6 +136,10 @@ public class EventAttributes {
   /**
    * Construct an attribute list with an arbitrary number of entries. Even-numbered array elements are
    * attribute names, and odd-numbered array elements are attribute values.
+   * <p>
+   * For attribute names, it is best to use standard identifiers (letters, digits, and
+   * underscores, not beginning with a digit), as these are easier to work with in the Scalyr Logs
+   * user interface.
    */
   public EventAttributes(Object[] inputs) {
     for (int i = 0; i < inputs.length; i += 2)
@@ -107,9 +149,36 @@ public class EventAttributes {
   /**
    * Construct a shallow copy of the given object.
    */
-  public EventAttributes(EventAttributes objectToCopy) {
-    for (Map.Entry<String, Object> entry : objectToCopy.values.entrySet())
+  public EventAttributes(EventAttributes source) {
+    addAll(source);
+  }
+  
+  /**
+   * Copy all attributes from the given object to this object. In case of conflicts,
+   * attributes from objectToCopy overwrite the existing attributes in this object.
+   * Non-conflicting attributes in this object are retained.
+   * 
+   * Return this object.
+   */
+  public EventAttributes addAll(EventAttributes source) {
+    for (Map.Entry<String, Object> entry : source.values.entrySet())
       put(entry.getKey(), entry.getValue());
+    
+    return this;
+  }
+  
+  /**
+   * Copy all attributes from the given object to this object. In case of conflicts,
+   * attributes from objectToCopy are ignored.
+   * 
+   * Return this object.
+   */
+  public EventAttributes underwriteFrom(EventAttributes source) {
+    for (Map.Entry<String, Object> entry : source.values.entrySet())
+      if (!containsKey(entry.getKey()))
+        put(entry.getKey(), entry.getValue());
+    
+    return this;
   }
   
   /**
@@ -121,6 +190,12 @@ public class EventAttributes {
   
   /**
    * Store (or overwrite) a value for the specified attribute.
+   * 
+   * @param key The attribute name. It is best to use standard identifiers (letters, digits, and
+   * underscores, not beginning with a digit), as these are easier to work with in the Scalyr Logs
+   * user interface.
+   * 
+   * @param value The attribute value.
    */
   public EventAttributes put(String key, Object value) {
     values.put(key, toValueType(value));
@@ -170,10 +245,21 @@ public class EventAttributes {
     return (o instanceof EventAttributes) && values.equals(((EventAttributes)o).values);
   }
   
+  @Override public int hashCode() {
+    return values.hashCode();
+  }
+  
+  /**
+   * Return all attribute names.
+   */
+  public Collection<String> getNames() {
+    return values.keySet();
+  }
+  
   /**
    * Return all attributes -- a collection of {attribute name, attribute value} pairs.
    */
-  public Iterable<Map.Entry<String, Object>> getEntries() {
+  public Collection<Map.Entry<String, Object>> getEntries() {
     return values.entrySet();
   }
 }

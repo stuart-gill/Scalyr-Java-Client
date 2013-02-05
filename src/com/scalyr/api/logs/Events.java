@@ -73,6 +73,24 @@ public class Events {
    */
   public static synchronized void init(String apiToken, Integer memoryLimit, String scalyrServerAddress,
       EventAttributes serverAttributes) {
+    init(apiToken, memoryLimit, scalyrServerAddress, serverAttributes, true);
+  }
+  
+  /**
+   * Variant which allows specifying attributes to identify this event stream.
+   * 
+   * @param apiToken The API authorization token to use when communicating with the Scalyr Logs server.
+   * @param memoryLimit If not null, then we limit memory usage (for buffering events to be uploaded)
+   *     to approximately this many bytes.
+   * @param scalyrServerAddress URL on which we invoke the Scalyr Logs API. If null, we use the standard
+   *     production server (currently https://log.scalyr.com).
+   * @param serverAttributes Attributes to associate with this event stream. All events in the stream
+   *     inherit these attributes. Can be null.
+   * @param reportThreadNames If true, then we include thread names in the metadata we upload to the server.
+   *     Set this to false only if your thread names contain sensitive data that should not be uploaded.
+   */
+  public static synchronized void init(String apiToken, Integer memoryLimit, String scalyrServerAddress,
+      EventAttributes serverAttributes, boolean reportThreadNames) {
     if (uploaderInstance.get() != null)
       return;
     
@@ -81,7 +99,7 @@ public class Events {
       logService.setServerAddress(scalyrServerAddress);
     
     EventUploader instance = new EventUploader(logService, memoryLimit,
-        "sess_" + UUID.randomUUID(), true, serverAttributes);
+        "sess_" + UUID.randomUUID(), true, serverAttributes, true, reportThreadNames);
     instance.eventFilter = eventFilter;
     
     uploaderInstance.set(instance);
@@ -284,6 +302,30 @@ public class Events {
   }
   
   /**
+   * Record an event at the specified severity, assigning it to a thread with the given ID. Events
+   * with the same threadId are considered to be part of a single thread.
+   * <p>
+   * This should be used when relaying events from some external source that does not correspond
+   * to the Java thread on which you are invoking this method. The thread ID should not be a number
+   * (otherwise, it might conflict with native Java thread IDs).
+   * 
+   * @param attributes Attributes for this event.
+   * @param severity Severity for this event.
+   * @param threadId Identifies a (pseudo) thread to which this event should be assigned.
+   * @param threadName Thread name. This is ignored except for the first call for a given thread ID;
+   *     all subsequent events with the same thread ID are considered to have the same thread name.
+   */
+  public static void event(Severity severity, EventAttributes attributes, String threadId, String threadName) {
+    try {
+      EventUploader instance = uploaderInstance.get();
+      if (instance != null)
+        instance.getThreadState(threadId, threadName).event(severity, attributes);
+    } catch (Exception ex) {
+      Logging.log(Severity.warning, Logging.tagInternalError, "Internal exception in Logs client", ex);
+    }
+  }
+  
+  /**
    * Record an event at the specified severity. This event marks the beginning of a span; at the
    * end of the span, call end(span). Best practice is to place the end() call in a "finally"
    * clause, so that spans are never left dangling.
@@ -372,11 +414,11 @@ public class Events {
    * Wipe the state of the Events reporting system. Should only be used for internal tests.
    */
   public static synchronized void _reset(String artificialSessionId,
-      LogService logService, int memoryLimit, boolean autoUpload) {
+      LogService logService, int memoryLimit, boolean autoUpload, boolean reportThreadNames) {
     if (uploaderInstance.get() != null)
       uploaderInstance.get().terminate();
     
-    EventUploader instance = new EventUploader(logService, memoryLimit, artificialSessionId, autoUpload, null);
+    EventUploader instance = new EventUploader(logService, memoryLimit, artificialSessionId, autoUpload, null, true, reportThreadNames);
     uploaderInstance.set(instance);
     instance.eventFilter = eventFilter;
   }

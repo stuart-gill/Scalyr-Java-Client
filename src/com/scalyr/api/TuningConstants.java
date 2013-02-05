@@ -61,11 +61,14 @@ public class TuningConstants {
   /**
    * Interval between sampling of registered Gauges.
    */
-  public static final int GAUGE_SAMPLE_INTERVAL_MS = 60000;
+  public static final int GAUGE_SAMPLE_INTERVAL_MS = 30000;
   
   /**
    * Maximum payload size for a single invocation of LogService.uploadEvents.
-   * This is the maximum size, in bytes, of the serialized events array. 
+   * This is the maximum size, in bytes, of the serialized events array.
+   * 
+   * Increasing this above 1MB may lead to problems where a single batch is larger
+   * than the burst size the server-side rate limiter allows.
    */
   public static final int MAX_EVENT_UPLOAD_BYTES = 1024 * 1024;
   
@@ -127,4 +130,40 @@ public class TuningConstants {
    * room to at least record a buffer-overflow message.
    */
   public static final int EVENT_BUFFER_END_EVENT_RESERVED_PERCENT = 1;
+  
+  /**
+   * Maximum rate at which we write diagnostic messages to stdout. Can be overridden
+   * by creating a ThresholdLogger with a custom SimpleRateLimiter, and passing it
+   * to Logging.setHook(...).
+   */
+  public static final double MAX_DIAGNOSTIC_MESSAGES_PER_SECOND = 50.0;
+  
+  /**
+   * Maximum burst size for diagnostic messages we write to stdout (the maximum number
+   * of messages which can be written before waiting for the budget to replenish). Can
+   * be overridden by creating a ThresholdLogger with a custom SimpleRateLimiter, and
+   * passing it to Logging.setHook(...).)
+   */
+  public static final double MAX_DIAGNOSTIC_MESSAGE_BURST = 500.0;
+  
+  /**
+   * Maximum rate at which we write tagKnobFileInvalid messages to stdout. Can be overridden
+   * by creating a ThresholdLogger with a custom SimpleRateLimiter, and passing it
+   * to Logging.setHook(...).
+   */
+  public static final double MAX_KNOBFILEINVALID_MESSAGES_PER_SECOND = 10.0;
+  
+  /**
+   * Maximum burst size for tagKnobFileInvalid messages we write to stdout (the maximum number
+   * of messages which can be written before waiting for the budget to replenish). Can
+   * be overridden by creating a ThresholdLogger with a custom SimpleRateLimiter, and
+   * passing it to Logging.setHook(...).)
+   */
+  public static final double MAX_KNOBFILEINVALID_MESSAGE_BURST = 20.0;
+  
+  /**
+   * Minimum spacing between stdout messages warning that diagnostic messages
+   * are being throttled. 
+   */
+  public static final double DIAGNOSTIC_OVERFLOW_WARNING_INTERVAL_SECS = 10.0;
 }

@@ -18,8 +18,6 @@
 package com.scalyr.api.knobs;
 
 import java.io.File;
-import java.io.IOException;
-import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashSet;
@@ -34,7 +32,7 @@ import com.scalyr.api.internal.Logging;
 import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.json.JSONParser;
-import com.scalyr.api.json.ParseException;
+import com.scalyr.api.json.JSONParser.JsonParseException;
 import com.scalyr.api.logs.Severity;
 
 /**
@@ -308,12 +306,8 @@ public abstract class ConfigurationFile {
         if (currentState.content.length() == 0)
           parsed = new JSONObject(); // treat an empty file as an empty object, i.e. as {}
         else
-          parsed = new JSONParser().parse(new StringReader(currentState.content));
-      } catch (IOException ex) {
-        cachedJsonError = new BadConfigurationFileException("IOException while parsing JSON file", ex);
-        Logging.log(Severity.warning, Logging.tagKnobFileInvalid, "Error parsing [" + this + "] as JSON", cachedJsonError);
-        throw cachedJsonError;
-      } catch (ParseException ex) {
+          parsed = JSONParser.parse(currentState.content);
+      } catch (JsonParseException ex) {
         cachedJsonError = new BadConfigurationFileException("File is not in valid JSON format");
         Logging.log(Severity.warning, Logging.tagKnobFileInvalid, "Error parsing [" + this + "] as JSON", cachedJsonError);
         throw cachedJsonError;

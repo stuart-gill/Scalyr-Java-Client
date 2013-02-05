@@ -61,7 +61,7 @@ public class KnobService extends ScalyrService {
   }
   
   /**
-   * Retrieve a configurtion file.
+   * Retrieve a configuration file.
    * 
    * @param path The file path, e.g. "/params.txt". Must begin with a slash.
    * @param expectedVersion Should normally be null. If not null, equal to the file's current version
@@ -88,7 +88,11 @@ public class KnobService extends ScalyrService {
     if (waitTime != null)
       parameters.put("waitTime", waitTime);
     
-    return invokeApi("getFile", parameters);
+    JSONObject parsed = invokeApi("getFile", parameters);
+    if (parsed != null)
+      return parsed.toString();
+    else
+      return null;
   }
   
   /**
@@ -105,7 +109,7 @@ public class KnobService extends ScalyrService {
    * @throws ScalyrException
    * @throws ScalyrNetworkException
    */
-  public String putFile(String path, Long expectedVersion, String content, boolean deleteFile)
+  public JSONObject putFile(String path, Long expectedVersion, String content, boolean deleteFile)
       throws ScalyrException, ScalyrNetworkException {
     JSONObject parameters = new JSONObject();
     parameters.put("token", apiToken);
@@ -132,7 +136,7 @@ public class KnobService extends ScalyrService {
    * Note that paths are complete (absolute) pathnames, beginning with a slash, and are sorted
    * lexicographically.
    */
-  public String listFiles() 
+  public JSONObject listFiles() 
       throws ScalyrException, ScalyrNetworkException {
     JSONObject parameters = new JSONObject();
     parameters.put("token", apiToken);

@@ -17,7 +17,9 @@
 
 package com.scalyr.api.logs;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Timer;
 import java.util.TimerTask;
@@ -54,7 +56,7 @@ public abstract class Gauge {
   private static Map<Gauge, EventAttributes> registeredGauges = new HashMap<Gauge, EventAttributes>(); 
   
   /**
-   * Register a gauge. We will record the gauge's value once per minute, associating
+   * Register a gauge. We will record the gauge's value once every 30 seconds, associating
    * the given attributes.
    */
   public static void register(Gauge gauge, EventAttributes attributes) {
@@ -75,19 +77,24 @@ public abstract class Gauge {
   }
   
   private static void recordGaugeValues() {
+    List<Map.Entry<Gauge, EventAttributes>> entries = new ArrayList<Map.Entry<Gauge, EventAttributes>>();
     synchronized (registeredGauges) {
       for (Map.Entry<Gauge, EventAttributes> entry : registeredGauges.entrySet()) {
-        try {
-          Object value = entry.getKey().sample();
-          if (value != null) {
-            EventAttributes attributes = new EventAttributes(entry.getValue());
-            attributes.put("value", value);
-            Events.info(attributes);
-          }
-        } catch (Exception ex) {
-          Logging.log(Severity.warning, Logging.tagGaugeThrewException,
-              "Exception in Gauge [" + entry.getKey() + "] (attributes " + entry.getValue() + ")", ex);
+        entries.add(entry);
+      }
+    }
+    
+    for (Map.Entry<Gauge, EventAttributes> entry : entries) {
+      try {
+        Object value = entry.getKey().sample();
+        if (value != null) {
+          EventAttributes attributes = new EventAttributes(entry.getValue());
+          attributes.put("value", value);
+          Events.info(attributes);
         }
+      } catch (Exception ex) {
+        Logging.log(Severity.warning, Logging.tagGaugeThrewException,
+            "Exception in Gauge [" + entry.getKey() + "] (attributes " + entry.getValue() + ")", ex);
       }
     }
   }

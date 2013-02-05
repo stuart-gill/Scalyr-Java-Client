@@ -60,11 +60,12 @@ public class LogService extends ScalyrService {
    * @throws ScalyrException
    * @throws ScalyrNetworkException
    */
-  public String uploadEvents(String sessionId, JSONObject sessionInfo,
+  public JSONObject uploadEvents(String sessionId, JSONObject sessionInfo,
       JSONStreamAware events, JSONArray threadInfos)
       throws ScalyrException, ScalyrNetworkException {
     JSONObject parameters = new JSONObject();
     
+    parameters.put("clientVersion", 1);
     parameters.put("token", apiToken);
     parameters.put("session", sessionId);
     if (sessionInfo != null)

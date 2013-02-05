@@ -19,7 +19,6 @@ package com.scalyr.api.knobs;
 
 import java.io.File;
 import java.io.IOException;
-import java.io.StringReader;
 import java.io.UnsupportedEncodingException;
 import java.util.Date;
 
@@ -30,6 +29,7 @@ import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.internal.Sleeper;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.json.JSONParser;
+import com.scalyr.api.json.JSONValue;
 import com.scalyr.api.logs.Severity;
 
 /**
@@ -58,7 +58,7 @@ class HostedConfigurationFile extends ConfigurationFile {
     this.knobService = knobService;
     
     if (cacheDir != null) {
-      cacheFile = new File(cacheDir, filePath.replace('/', '|'));
+      cacheFile = new File(cacheDir, filePath.replace("/", "__"));
       fetchInitialStateFromCacheFile();
     } else {
       cacheFile = null;
@@ -97,7 +97,7 @@ class HostedConfigurationFile extends ConfigurationFile {
     }
     
     try {
-      JSONObject header = (JSONObject) new JSONParser().parse(new StringReader(cacheFileContent.substring(0, headerEnd + 1)));
+      JSONObject header = (JSONObject) JSONParser.parse(cacheFileContent.substring(0, headerEnd + 1));
       
       long version = (long) Converter.toLong(header.get("version"));
       if (version == 0) {
@@ -127,7 +127,7 @@ class HostedConfigurationFile extends ConfigurationFile {
       }
       
       StringBuilder sb = new StringBuilder();
-      sb.append(header.toJSONString());
+      sb.append(JSONValue.toJSONString(header));
       if (fileState.content != null) {
         sb.append(fileState.content);
       }
@@ -153,7 +153,7 @@ class HostedConfigurationFile extends ConfigurationFile {
             long startTime = ScalyrUtil.currentTimeMillis();
             String rawResponse = knobService.getFile(getPathname(), expectedVersion, MAX_WAIT_TIME);
           
-            JSONObject response = (JSONObject) new JSONParser().parse(rawResponse);
+            JSONObject response = (JSONObject) JSONParser.parse(rawResponse);
           
             Object statusObj = response.get("status");
             String status = (statusObj != null) ? statusObj.toString() : "error/server/missingStatus";
@@ -211,6 +211,7 @@ class HostedConfigurationFile extends ConfigurationFile {
         
           // TODO: throttle requests, to avoid runaway loops in the case of connectivity problems or
           // other systemic problems. E.g. we might limit ourselves to 5 invocations per minute.
+          // For now, the retryInterval prevents excessive runaway activity.
           Sleeper.instance.sleep(retryInterval);
         
           // Logging.log("initiateAsyncFetch " + id + ": recursing");

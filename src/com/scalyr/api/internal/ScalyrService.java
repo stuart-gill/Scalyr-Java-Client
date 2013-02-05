@@ -17,12 +17,10 @@
 
 package com.scalyr.api.internal;
 
-import java.io.BufferedReader;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.Reader;
 import java.net.HttpURLConnection;
 import java.net.SocketTimeoutException;
 import java.net.URL;
@@ -33,6 +31,7 @@ import com.scalyr.api.ScalyrNetworkException;
 import com.scalyr.api.TuningConstants;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.json.JSONParser;
+import com.scalyr.api.json.JSONParser.ByteScanner;
 import com.scalyr.api.logs.Severity;
 
 /**
@@ -126,7 +125,7 @@ public abstract class ScalyrService {
    * @throws ScalyrException
    * @throws ScalyrNetworkException
    */
-  public String invokeApi(String methodName, JSONObject parameters) {
+  public JSONObject invokeApi(String methodName, JSONObject parameters) {
     // Produce a shuffled copy of the server addresses, so that load is distributed
     // across the servers.
     int N = serverAddresses.length;
@@ -183,7 +182,7 @@ public abstract class ScalyrService {
    * @throws ScalyrException
    * @throws ScalyrNetworkException
    */
-  protected String invokeApiOnServer(String serverAddress, String methodName, JSONObject parameters) {
+  protected JSONObject invokeApiOnServer(String serverAddress, String methodName, JSONObject parameters) {
     HttpURLConnection connection = null;  
     try {
       // Send the request.
@@ -215,8 +214,7 @@ public abstract class ScalyrService {
       int responseCode = connection.getResponseCode();
       
       InputStream input = connection.getInputStream();
-      BufferedReader reader = new BufferedReader(new InputStreamReader(input, "UTF-8"));
-      String responseText = readEntireStream(reader);
+      byte[] rawResponse = readEntireStream(input);
       
       // We no longer explicitly close, so that HTTP keepalive can function.
       // reader.close();
@@ -225,8 +223,9 @@ public abstract class ScalyrService {
       Logging.log(Severity.fine, Logging.tagServerCommunication,
           serverAddress + "/" + methodName + ": "
           + runtimeMs + " ms, "
-          + requestLength + " bytes up, "
-          + responseText.length() + " chars down, response status " + responseCode
+          + requestLength + " bytes sent, "
+          + rawResponse.length + " bytes received, "
+          + "response status " + responseCode
           );
       
       if (responseCode != 200) {
@@ -235,14 +234,14 @@ public abstract class ScalyrService {
         throw new ScalyrNetworkException("Scalyr server returned error code " + responseCode);
       }
       
-      Object responseJson = new JSONParser().parse(responseText);
+      Object responseJson = new JSONParser(new ByteScanner(rawResponse)).parseValue();
       if (responseJson instanceof JSONObject) {
         Object status = ((JSONObject)responseJson).get("status");
         Logging.log(Severity.finer, Logging.tagServerCommunication,
             "Response status [" + (status == null ? "(none)" : status) + "]"
             );
         
-        return responseText;
+        return (JSONObject) responseJson;
       } else {
         throw new ScalyrException("Malformed response from Scalyr server");
       }
@@ -259,15 +258,15 @@ public abstract class ScalyrService {
     }
   }
   
-  private String readEntireStream(Reader reader) throws IOException {
-    StringBuilder sb = new StringBuilder();
-    char[] buffer = new char[4096];
+  private byte[] readEntireStream(InputStream input) throws IOException {
+    ByteArrayOutputStream accumulator = new ByteArrayOutputStream();
+    byte[] buffer = new byte[4096];
     while (true) {
-      int count = reader.read(buffer, 0, buffer.length);
+      int count = input.read(buffer, 0, buffer.length);
       if (count <= 0)
         break;
-      sb.append(buffer, 0, count);
+      accumulator.write(buffer, 0, count);
     }
-    return sb.toString();
+    return accumulator.toByteArray();
   }
 }

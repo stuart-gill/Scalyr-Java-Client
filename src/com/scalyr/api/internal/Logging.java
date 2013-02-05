@@ -17,7 +17,12 @@
 
 package com.scalyr.api.internal;
 
+import java.util.UUID;
+
 import com.scalyr.api.LogHook;
+import com.scalyr.api.logs.EventAttributes;
+import com.scalyr.api.logs.EventUploader;
+import com.scalyr.api.logs.LogService;
 import com.scalyr.api.logs.Severity;
 
 /**
@@ -32,11 +37,38 @@ public class Logging {
   private static volatile LogHook hook = new LogHook.ThresholdLogger(Severity.info);
   
   /**
+   * An uploader used for "meta-reporting", i.e. logging statistics about the internal
+   * behavior of the Scalyr client library itself to a Scalyr Logs server. Null unless
+   * enableMetaMonitoring() has been called.
+   */
+  private static volatile EventUploader metaReportingUploader;
+  
+  /**
    * Specify the LogHook object to process internal messages logged by the Scalyr client.
    * Replaces any previous hook.
    */
   public static void setHook(LogHook value) {
     hook = value;
+  }
+  
+  /**
+   * Enable "meta-reporting" of internal Scalyr client statistics to Scalyr Logs. This should
+   * be called at most once.
+   * 
+   * @param apiToken the API token to use when sending events to Scalyr Logs.
+   * @param bufferSize
+   */
+  public static void enableMetaMonitoring(String apiToken, int bufferSize, EventAttributes serverAttributes) {
+    if (metaReportingUploader != null)
+      throw new RuntimeException("enableMetaMonitoring should be called at most once");
+    
+    metaReportingUploader = new EventUploader(new LogService(apiToken),
+        bufferSize, "sess_" + UUID.randomUUID(), true, serverAttributes, false, false);
+  }
+  
+  public static void metaMonitorInfo(EventAttributes event) {
+    if (metaReportingUploader != null)
+      metaReportingUploader.rawEvent(Severity.info, event);
   }
   
   public static void log(Severity severity, String tag, String message) {
@@ -137,4 +169,34 @@ public class Logging {
    * Events.end() called with no matching start call.
    */
   public static final String tagMismatchedEnd = "user/error/mismatchedEnd";
+  
+  /**
+   * This tag is issued periodically to report the number of bytes in the buffer
+   * of events waiting to be uploaded. The message is a decimal representation of
+   * the byte count.
+   */
+  public static final String tagBufferedEventBytes = "local/info/bufferedEventBytes";
+  
+  /**
+   * This tag is issued after each attempt to upload events to the server. The
+   * message is a JSON object encoding the outcome, in the form
+   * 
+   *   {"size": nnn, "duration": nnn, "success", true|false}
+   * 
+   * size is the size of the event buffer being uploaded, and duration is the elapsed time
+   * for the upload operation (in nanoseconds).
+   */
+  public static final String tagEventUploadOutcome = "local/info/eventUploadOutcome";
+  
+  /**
+   * This tag issued after a new EventUpload instance is created for uploading events.
+   * It is a human readable message meant to give extra information, such as a link to
+   * Scalyr log query to show all events from this host.
+   */
+  public static final String tagEventUploadSession = "local/info/eventUploadSession";
+  
+  /**
+   * This tag is issued after an error is seen while creating an EventUpload instance.
+   */
+  public static String tagEventUploadError = "local/error/eventUploadSession";
 }

@@ -46,6 +46,16 @@ public class ScalyrUtil {
   public static final Charset utf8 = Charset.forName("UTF-8");
   
   /**
+   * Nanoseconds per millisecond.
+   */
+  public static long NANOS_PER_MS = 1000000L;
+  
+  /**
+   * Nanoseconds per second.
+   */
+  public static long NANOS_PER_SECOND = NANOS_PER_MS * 1000;
+  
+  /**
    * Throw an exception if condition is false.
    * 
    * We use this instead of the built-in Java assert() mechanism, to avoid worries about whether assertions

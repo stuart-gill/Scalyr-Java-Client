@@ -20,6 +20,8 @@ package com.scalyr.api.logs;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.UnsupportedEncodingException;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -37,8 +39,7 @@ import com.scalyr.api.internal.Logging.LogLimiter;
 import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONArray;
 import com.scalyr.api.json.JSONObject;
-import com.scalyr.api.json.JSONParser;
-import com.scalyr.api.json.ParseException;
+import com.scalyr.api.json.JSONParser.JsonParseException;
 import com.scalyr.api.json.RawJson;
 import com.scalyr.api.logs.EventFilter.FilterInput;
 import com.scalyr.api.logs.EventFilter.FilterOutput;
@@ -75,8 +76,15 @@ public class EventUploader {
   private final boolean autoUpload;
   
   /**
+   * If true, then we include thread names in the metadata we upload to the server. Normally true,
+   * but can be disabled by clients who are worried about sensitive data in thread names.
+   */
+  private final boolean reportThreadNames;
+  
+  /**
    * IP address of this server.
    */
+  @SuppressWarnings("unused")
   private String ourIpAddress;
   
   /**
@@ -90,21 +98,38 @@ public class EventUploader {
   final ThreadLocal<PerThreadState> threadEvents = new ThreadLocal<PerThreadState>() {
     @Override protected PerThreadState initialValue() {
       Thread thread = Thread.currentThread();
-      PerThreadState temp = new PerThreadState(thread.getId(), thread.getName());
+      String threadIdString = Long.toString(thread.getId()); 
+      PerThreadState temp = new PerThreadState(thread.getId(), reportThreadNames ? thread.getName() : "");
       synchronized (threads) {
-        ScalyrUtil.Assert(!threads.containsKey(thread), "collision in threads table");
-        threads.put(thread, temp);
+        ScalyrUtil.Assert(!threads.containsKey(threadIdString), "collision in threads table");
+        threads.put(threadIdString, temp);
       }
       return temp;
     }
   };
   
   /**
-   * All outstanding threads for which we have recorded at least one event.
+   * Return the PerThreadState for the given thread. If this is the first mention of the thread,
+   * create a PerThreadState for it.
+   */
+  PerThreadState getThreadState(String threadId, String threadName) {
+    synchronized (threads) {
+      PerThreadState state = threads.get(threadId);
+      if (state == null) {
+        state = new PerThreadState(threadId, threadName);
+        threads.put(threadId, state);
+      }
+      
+      return state;
+    }
+  }
+  
+  /**
+   * All outstanding threads for which we have recorded at least one event, indexed by thread ID.
    * 
    * TODO: should scavenge records for idle threads.
    */
-  private Map<Thread, PerThreadState> threads = new HashMap<Thread, PerThreadState>();
+  private Map<String, PerThreadState> threads = new HashMap<String, PerThreadState>();
   
   /**
    * Holds the serialized form of all events which have been recorded since the last call to uploadBuffer.
@@ -194,20 +219,64 @@ public class EventUploader {
   volatile EventFilter eventFilter;
   
   /**
-   * Construct an EventUploader to buffer events and upload them to the given LogService instance.
+   * Specifies whether we call Logging.metaMonitorInfo for events in this EventUploader. True for
+   * a normal EventUploader, false for the EventUploader that implements meta-monitoring.
    */
-  EventUploader(LogService logService, int memoryLimit, String sessionId, boolean autoUpload,
-      EventAttributes serverAttributes) {
+  private final boolean enableMetaMonitoring;
+  
+  /**
+   * Construct an EventUploader to buffer events and upload them to the given LogService instance.
+   * <p>
+   * THIS METHOD IS INTENDED FOR INTERNAL USE ONLY.
+   */
+  public EventUploader(LogService logService, int memoryLimit, String sessionId, boolean autoUpload,
+      EventAttributes serverAttributes, boolean enableMetaMonitoring, boolean reportThreadNames) {
     this.logService = logService;
     this.autoUpload = autoUpload;
+    this.reportThreadNames = reportThreadNames;
     
     this.memoryLimit = memoryLimit;
     pendingEventBuffer = new CircularByteArray(memoryLimit);
     
     this.sessionId = sessionId;
     this.serverAttributes = serverAttributes;
+    this.enableMetaMonitoring = enableMetaMonitoring;
     
     launchUploadTimer();
+    
+    // To aid customers being able to quickly see the results of events being uploaded
+    // by this host, include a query URL to match them on the Scalyr log servers.
+    String serverHost = serverAttributes != null && serverAttributes.containsKey("serverHost") ?
+        (String) serverAttributes.get("serverHost") :
+        ScalyrUtil.getHostname();
+    try {
+      Logging.log(Severity.info, Logging.tagEventUploadSession, "Uploading events from " +
+          serverHost + ".  You may view events uploaded by this host at " +
+          "https://log.scalyr.com/events?mode=log&filter=%24serverHost%3D%27" +
+          URLEncoder.encode(serverHost, "UTF-8") + 
+          "%27&startTime=infinity&linesBefore=100&scrollToEnd=true#scrollTop ");
+    } catch (UnsupportedEncodingException e) {
+      Logging.log(Severity.error, Logging.tagEventUploadSession, 
+          "Unsupported encoding seen while trying to output log URL", e);
+    }
+  }
+  
+  /**
+   * Add an event to our buffer.
+   * <p>
+   * THIS METHOD IS INTENDED FOR INTERNAL USE ONLY.
+   */
+  public void rawEvent(Severity severity, EventAttributes event) {
+    threadEvents.get().event(severity, event);
+  }
+  
+  /**
+   * Add an event to our buffer.
+   * <p>
+   * THIS METHOD IS INTENDED FOR INTERNAL USE ONLY.
+   */
+  public void rawEvent(Severity severity, EventAttributes event, long timestampNs) {
+    threadEvents.get().event(severity, event, timestampNs);
   }
   
   synchronized void terminate() {
@@ -254,11 +323,31 @@ public class EventUploader {
   }
   
   /**
+   * Time when we last logged the pendingEventBuffer size.
+   */
+  long bufLogMs = System.currentTimeMillis();
+
+  void logBuffer() {
+    long now = System.currentTimeMillis();
+    if (now - bufLogMs > 10000) {
+      bufLogMs = now;
+      
+      if (enableMetaMonitoring)
+        Logging.metaMonitorInfo(new EventAttributes(
+            "tag", "pendingEventBuffer",
+            "size", pendingEventBuffer.numBufferedBytes()));
+      Logging.log(Severity.fine, Logging.tagBufferedEventBytes, Long.toString(pendingEventBuffer.numBufferedBytes()));
+    }
+  }
+
+  /**
    * This method is called periodically by a timer. If it's been long enough since we last
    * sent a batch of events to the server, we snapshot the events currently buffered (or
    * a portion thereof, if there are too many to upload all at once) and initiate an upload.
    */
   synchronized void uploadTimerTick(boolean bypassWaitTimers) {
+    logBuffer();
+    
     final int bufferedBytes;
     RawJson eventsToUpload;
     
@@ -302,11 +391,14 @@ public class EventUploader {
     sessionInfo.put("session", sessionId);
     sessionInfo.put("launchTime", launchTimeNs);
     
-    if (ourIpAddress != null)
-      sessionInfo.put("ipAddress", ourIpAddress);
+    // We no longer explicitly report our IP address as a session attribute, as
+    // the Scalyr Logs server adds this automatically (under the name "serverIp").
+    // 
+    // if (ourIpAddress != null)
+    //   sessionInfo.put("serverIp", ourIpAddress);
     
     if (ourHostname != null)
-      sessionInfo.put("hostname", ourHostname);
+      sessionInfo.put("serverHost", ourHostname);
 
     if (serverAttributes != null)
       for (Map.Entry<String, Object> entry : serverAttributes.values.entrySet())
@@ -317,21 +409,36 @@ public class EventUploader {
     // TODO: only include threads for which we are uploading at least one event.
     for (PerThreadState thread : threadsSnapshot) {
       JSONObject threadInfo = new JSONObject();
-      threadInfo.put("id", Long.toString(thread.threadId));
+      threadInfo.put("id", thread.threadId);
       threadInfo.put("name", thread.name);
       threadInfos.add(threadInfo);
     }
     
+    boolean success = false;
+    long start = System.nanoTime();
+    long duration = -1L;
+    
     try {
       lastUploadStartMs = ScalyrUtil.currentTimeMillis();
-      String rawResponse = logService.uploadEvents(sessionId, sessionInfo, eventsToUpload, threadInfos);
+      JSONObject rawResponse;
       try {
-        JSONObject parsedResponse = (JSONObject) new JSONParser().parse(rawResponse);
+        rawResponse = logService.uploadEvents(sessionId, sessionInfo, eventsToUpload, threadInfos);
+      } catch (RuntimeException ex) {
+        printFailure(ex.toString());
+        throw ex;
+      }
+      
+      duration = System.nanoTime() - start;
+      try {
+        JSONObject parsedResponse = rawResponse;
         
         // Adjust our upload interval based on the success or failure of this upload request.
         Object rawStatus = parsedResponse.get("status");
         String status = (rawStatus instanceof String) ? (String)rawStatus : "error/server";
-        if (status.startsWith("success")) {
+        success = status.startsWith("success");
+        if (success) {
+          logUploadSuccess();
+          
           minUploadIntervalMs *= TuningConstants.UPLOAD_SPACING_FACTOR_ON_SUCCESS;
           minUploadIntervalMs = Math.max(minUploadIntervalMs, TuningConstants.MIN_EVENT_UPLOAD_SPACING_MS);
           
@@ -346,12 +453,20 @@ public class EventUploader {
             pendingEventsReachedLimit = false;
           }
         } else {
+          printFailure("Server response had bad status [" + rawStatus + "]; complete text: " + parsedResponse.toString());
+          
+          Logging.log(Severity.warning, Logging.tagServerError,
+              "Bad response from Scalyr Logs (status [" + status + "], message [" +
+              parsedResponse.get("message") + "])");
+          
           // Note that we back off for all errors, not just error/server/backoff. Other errors are liable to
           // be systemic, and there's little reason to retry an upload frequently in the face of systemic errors.
           minUploadIntervalMs *= TuningConstants.UPLOAD_SPACING_FACTOR_ON_BACKOFF;
           minUploadIntervalMs = Math.min(minUploadIntervalMs, TuningConstants.MAX_EVENT_UPLOAD_SPACING_MS);
         }
-      } catch (ParseException ex) {
+      } catch (JsonParseException ex) {
+        printFailure(ex.toString());
+        
         // This shouldn't occur, as the underlying service framework verifies that the server's
         // response is valid JSON.
         throw new RuntimeException(ex);
@@ -360,9 +475,45 @@ public class EventUploader {
       synchronized (uploadSynchronizer) {
         uploadInProgress = false;
       }
+      if (duration == -1L)
+        duration = System.nanoTime() - start;
+      
+      if (enableMetaMonitoring)
+        Logging.metaMonitorInfo(new EventAttributes(
+            "tag", "clientUploadEvents",
+            "size", bufferedBytes,
+            "duration", duration,
+            "success", success));
+      Logging.log(Severity.fine, Logging.tagEventUploadOutcome,
+          "{\"size\": " + bufferedBytes + ", \"duration\": " + duration + ", \"success\", " + success + "}");
     }
   }
   
+  boolean loggedUploadSuccess = false;
+
+  /**
+   * Write a note to stdout indicating that we've successfully uploaded a batch of events to
+   * the server. We do this only once (for the first successful upload). The agent.sh script
+   * uses this to see whether the relay has come up cleanly.
+   */
+  void logUploadSuccess() {
+    if (!loggedUploadSuccess) {
+      loggedUploadSuccess = true;
+      System.out.println("UPLOAD SUCCESS: the first batch of events has been successfully uploaded to the Scalyr server.");
+    }
+  }
+
+  /**
+   * Write a note to stdout indicating that we've had a failed attempt to upload a batch of events to
+   * the server. We do this only until the first successful upload. The agent.sh script uses this
+   * to see whether the relay has come up cleanly.
+   */
+  void printFailure(String message) {
+    if (!loggedUploadSuccess) {
+      System.out.println("UPLOAD FAILURE: " + message);
+    }
+  }
+
   /**
    * Return if it's time to initiate a new upload batch, return the number of event payload bytes
    * (from pendingEventBuffer) to upload. Otherwise return -1.
@@ -444,7 +595,7 @@ public class EventUploader {
     /**
      * Thread.getId() for the thread whose events we store.
      */
-    final long threadId;
+    final String threadId;
     
     /**
      * Thread name.
@@ -484,6 +635,10 @@ public class EventUploader {
     private int eventDiscardGeneration = -1;
     
     PerThreadState(long threadId, String name) {
+      this(Long.toString(threadId), name);
+    }
+    
+    PerThreadState(String threadId, String name) {
       this.threadId = threadId;
       this.name = name;
     }
@@ -579,7 +734,7 @@ public class EventUploader {
       EventFilter localFilter = eventFilter;
       if (localFilter != null && !isOverflowMessage) {
         FilterInput filterInput = new FilterInput();
-        filterInput.threadId = Long.toString(threadId);
+        filterInput.threadId = threadId;
         filterInput.timestampNs = timestamp;
         filterInput.spanType = spanType;
         filterInput.severity = severity;
@@ -606,7 +761,7 @@ public class EventUploader {
       // Note that we store the timestamp as a string, not a number. This is because some JSON packages
       // convert all numbers to floating point, and a 64-bit floating point value doesn't have sufficient
       // precision to represent a nanosecond timestamp. We take a similar precaution for the thread ID.
-      json.put("thread", Long.toString(threadId));
+      json.put("thread", threadId);
       json.put("ts", Long.toString(timestamp));
       json.put("type", spanType);
       json.put("sev", severity.ordinal());

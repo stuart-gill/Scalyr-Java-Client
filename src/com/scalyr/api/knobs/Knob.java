@@ -235,7 +235,7 @@ public class Knob {
   /**
    * Register a callback to be invoked whenever our value changes.
    */
-  public synchronized void addUpdateListener(Callback<Knob> updateListener) {
+  public synchronized Knob addUpdateListener(Callback<Knob> updateListener) {
     if (updateListeners.size() == 0) {
       fileListener = new Callback<ConfigurationFile>(){
         @Override public void run(ConfigurationFile updatedFile) {
@@ -246,6 +246,8 @@ public class Knob {
         file.addUpdateListener(fileListener);
     }
     updateListeners.add(updateListener);
+    
+    return this;
   }
   
   protected synchronized boolean allFilesHaveValues() {
@@ -259,7 +261,7 @@ public class Knob {
   /**
    * De-register a callback. If the callback was not registered, we do nothing.
    */
-  public synchronized void removeUpdateListener(Callback<Knob> updateListener) {
+  public synchronized Knob removeUpdateListener(Callback<Knob> updateListener) {
     updateListeners.remove(updateListener);
     
     if (updateListeners.size() == 0) {
@@ -267,6 +269,8 @@ public class Knob {
         file.removeUpdateListener(fileListener);
       fileListener = null;
     }
+    
+    return this;
   }
   
   /**
