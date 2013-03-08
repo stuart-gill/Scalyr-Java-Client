@@ -43,8 +43,17 @@ import com.scalyr.api.logs.Severity;
 public class Knob {
   /**
    * Files in which we look for the value. We use the first file that defines our key.
+   * 
+   * If useDefaultFiles is true, then this list should be overwritten with defaultFiles before
+   * use.
    */
-  private final ConfigurationFile[] files;
+  private ConfigurationFile[] files;
+  
+  /**
+   * If true, then our files list needs to be replaced with defaultFiles. We do this lazily on first access,
+   * so that Knobs can be constructed before setDefaultFiles is invoked.
+   */
+  private boolean useDefaultFiles;
   
   /**
    * The key we look for in each file.
@@ -108,12 +117,22 @@ public class Knob {
     if (files.length > 0) {
       this.files = files;
     } else {
-      this.files = defaultFiles.get();
-      if (this.files == null)
-        throw new RuntimeException("Must call setDefaultFiles before creating a Knob with no ConfigurationFiles");
+      useDefaultFiles = true;
     }
     this.key = key;
     this.defaultValue = defaultValue;
+  }
+  
+  /**
+   * If our files list has not yet been initialized, initialize it with the default.
+   */
+  private synchronized void prepareFilesList() {
+    if (useDefaultFiles) {
+      files = defaultFiles.get();
+      if (files == null)
+        throw new RuntimeException("Must call setDefaultFiles before using a Knob with no ConfigurationFiles");
+      useDefaultFiles = false;
+    }
   }
   
   /**
@@ -191,6 +210,7 @@ public class Knob {
     long entryTime = (timeoutInMs != null) ? ScalyrUtil.currentTimeMillis() : 0;
     
     Object newValue = defaultValue;
+    prepareFilesList();
     for (ConfigurationFile file : files) {
       JSONObject parsedFile;
       try {
@@ -242,6 +262,7 @@ public class Knob {
           if (allFilesHaveValues())
             get();
         }};
+      prepareFilesList();
       for (ConfigurationFile file : files)
         file.addUpdateListener(fileListener);
     }
@@ -251,6 +272,7 @@ public class Knob {
   }
   
   protected synchronized boolean allFilesHaveValues() {
+    prepareFilesList();
     for (ConfigurationFile file : files)
       if (!file.hasState())
         return false;
@@ -265,6 +287,7 @@ public class Knob {
     updateListeners.remove(updateListener);
     
     if (updateListeners.size() == 0) {
+      prepareFilesList();
       for (ConfigurationFile file : files)
         file.removeUpdateListener(fileListener);
       fileListener = null;

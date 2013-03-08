@@ -308,7 +308,7 @@ public abstract class ConfigurationFile {
         else
           parsed = JSONParser.parse(currentState.content);
       } catch (JsonParseException ex) {
-        cachedJsonError = new BadConfigurationFileException("File is not in valid JSON format");
+        cachedJsonError = new BadConfigurationFileException("File is not in valid JSON format (" + ex.getMessage() + ")");
         Logging.log(Severity.warning, Logging.tagKnobFileInvalid, "Error parsing [" + this + "] as JSON", cachedJsonError);
         throw cachedJsonError;
       }

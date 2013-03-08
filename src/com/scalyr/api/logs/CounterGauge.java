@@ -77,7 +77,7 @@ public class CounterGauge extends Gauge {
   /**
    * Implementation of Gauge.sample().
    */
-  @Override public Object sample() {
+  @Override public synchronized Object sample() {
     return value;
   }
 

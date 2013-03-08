@@ -426,6 +426,9 @@ public class EventUploader {
       } catch (RuntimeException ex) {
         printFailure(ex.toString());
         throw ex;
+      } catch (Error ex) {
+        printFailure(ex.toString());
+        throw ex;
       }
       
       duration = System.nanoTime() - start;

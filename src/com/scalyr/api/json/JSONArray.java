@@ -13,9 +13,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
- * Taken from the json-simple library, by Yidong Fang and Chris Nokleberg.
- * This copy has been modified by Scalyr, Inc.; see README.txt for details.
  */
 
 package com.scalyr.api.json;
@@ -24,18 +21,18 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.util.ArrayList;
-import java.util.List;
 
 import com.scalyr.api.internal.FlushlessOutputStream;
 
 /**
  * A JSON array. JSONObject supports java.util.List interface.
- * 
- * @author FangYidong<fangyidong@yahoo.com.cn>
  */
-public class JSONArray extends ArrayList<Object> implements List<Object>, JSONStreamAware {
-  private static final long serialVersionUID = 3957988303675231981L;
-
+public class JSONArray extends ArrayList<Object> implements JSONStreamAware {
+  public JSONArray(Object ... values) {
+    for (Object value : values)
+      add(value);
+  }
+  
   @Override public void writeJSONBytes(OutputStream out) throws IOException {
     out.write('[');
     
@@ -64,8 +61,7 @@ public class JSONArray extends ArrayList<Object> implements List<Object>, JSONSt
     out.write(']');
   }
   
-  @Override
-  public String toString() {
+  @Override public String toString() {
     return JSONValue.toJSONString(this);
   }
 

@@ -22,9 +22,14 @@ import java.lang.management.ManagementFactory;
 import java.lang.management.MemoryMXBean;
 import java.lang.management.MemoryPoolMXBean;
 import java.lang.management.MemoryUsage;
+import java.lang.management.ThreadMXBean;
 
 import com.scalyr.api.internal.ScalyrUtil;
 
+/**
+ * Provides utilities registerGeneralStats, registerMemoryStats, and registerAll for reporting statistics
+ * on the JVM: uptime, thread count, heap usage, etc.
+ */
 public class StatReporter {
   private static final long processStartTime = ScalyrUtil.currentTimeMillis();
   
@@ -51,6 +56,16 @@ public class StatReporter {
     Gauge.register(new Gauge(){@Override public Object sample() {
       return ScalyrUtil.currentTimeMillis() - processStartTime;
     }}, attributesWithTag("jvm.uptimeMs"));
+
+    final ThreadMXBean threadBean = ManagementFactory.getThreadMXBean();
+    
+    Gauge.register(new Gauge(){@Override public Object sample() {
+      return threadBean.getThreadCount();
+    }}, attributesWithTag("jvm.threads.threadCount"));
+    
+    Gauge.register(new Gauge(){@Override public Object sample() {
+      return threadBean.getDaemonThreadCount();
+    }}, attributesWithTag("jvm.threads.daemonThreadCount"));
   }
 
   /**
@@ -112,7 +127,7 @@ public class StatReporter {
     }
   }
   
-  private static EventAttributes attributesWithTag(String tag) {
+  static EventAttributes attributesWithTag(String tag) {
     return new EventAttributes("source", "tsdb", "tag", tag);
   }
 }

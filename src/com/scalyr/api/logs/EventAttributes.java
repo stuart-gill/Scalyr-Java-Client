@@ -72,8 +72,8 @@ public class EventAttributes {
    * 
    * @param value1 The attribute value.
    */
-  public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3) {
-    put(key, value);
+  public EventAttributes(String key1, Object value1, String key2, Object value2, String key3, Object value3) {
+    put(key1, value1);
     put(key2, value2);
     put(key3, value3);
   }
@@ -87,9 +87,9 @@ public class EventAttributes {
    * 
    * @param value1 The attribute value.
    */
-  public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3,
+  public EventAttributes(String key1, Object value1, String key2, Object value2, String key3, Object value3,
       String key4, Object value4) {
-    put(key, value);
+    put(key1, value1);
     put(key2, value2);
     put(key3, value3);
     put(key4, value4);
@@ -104,9 +104,9 @@ public class EventAttributes {
    * 
    * @param value1 The attribute value.
    */
-  public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3,
+  public EventAttributes(String key1, Object value1, String key2, Object value2, String key3, Object value3,
       String key4, Object value4, String key5, Object value5) {
-    put(key, value);
+    put(key1, value1);
     put(key2, value2);
     put(key3, value3);
     put(key4, value4);
@@ -123,9 +123,9 @@ public class EventAttributes {
    * 
    * @param value1 The attribute value.
    */
-  public EventAttributes(String key, Object value, String key2, Object value2, String key3, Object value3,
+  public EventAttributes(String key1, Object value1, String key2, Object value2, String key3, Object value3,
       String key4, Object value4, String key5, Object value5, String key6, Object value6) {
-    put(key, value);
+    put(key1, value1);
     put(key2, value2);
     put(key3, value3);
     put(key4, value4);

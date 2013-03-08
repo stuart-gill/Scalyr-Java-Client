@@ -41,6 +41,8 @@ import com.scalyr.api.internal.Logging;
 public abstract class Gauge {
   /**
    * Report the current value for this gauge.
+   * 
+   * NOTE: this method should not block, or it will prevent all Gauges from reporting values. 
    */
   public abstract Object sample();
   
@@ -60,19 +62,31 @@ public abstract class Gauge {
    * the given attributes.
    */
   public static void register(Gauge gauge, EventAttributes attributes) {
+    boolean firstTime = false;
     synchronized (registeredGauges) {
       registeredGauges.put(gauge, attributes);
       
-      // If the timer task hasn't been launched yet, launch it now.
+      // If the timer task hasn't been launched yet, launch it now. Also take this opportunity to
+      // register a gauge to report the number of outstanding gauges.
       if (sampleTimer == null) {
         sampleTimer = new Timer("SampleTimer", true);
-        sampleTask = new TimerTask(){
-          @Override public void run() {
-            recordGaugeValues();
-          }};
-        sampleTimer.schedule(sampleTask, TuningConstants.GAUGE_SAMPLE_INTERVAL_MS,
-            TuningConstants.GAUGE_SAMPLE_INTERVAL_MS);
+        firstTime = true;
       }
+    }
+    
+    if (firstTime) {
+      sampleTask = new TimerTask(){
+        @Override public void run() {
+          recordGaugeValues();
+        }};
+      sampleTimer.schedule(sampleTask, TuningConstants.GAUGE_SAMPLE_INTERVAL_MS,
+          TuningConstants.GAUGE_SAMPLE_INTERVAL_MS);
+      
+      register(new Gauge(){@Override public Object sample() {
+        synchronized (registeredGauges) {
+          return registeredGauges.size();
+        }
+      }}, StatReporter.attributesWithTag("scalyr.gaugeCount"));
     }
   }
   

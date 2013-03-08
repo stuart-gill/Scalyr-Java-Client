@@ -13,49 +13,49 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
- * Taken from the json-simple library, by Yidong Fang and Chris Nokleberg.
- * This copy has been modified by Scalyr, Inc.; see README.txt for details.
  */
 
 package com.scalyr.api.json;
 
 import java.io.IOException;
 import java.io.OutputStream;
-import java.io.OutputStreamWriter;
 import java.util.HashMap;
 import java.util.Map;
-
-import com.scalyr.api.internal.FlushlessOutputStream;
 
 /**
  * A JSON object. Key value pairs are unordered. JSONObject supports
  * java.util.Map interface.
- * 
- * @author FangYidong<fangyidong@yahoo.com.cn>
  */
 public class JSONObject extends HashMap<String, Object> implements JSONStreamAware {
   public JSONObject() {
     super();
   }
 
+  /**
+   * Set the specified key to the specified value, and return this object.  Useful for builder-style coding, i.e.
+   * 
+   *   JSONObject object = new JSONObject().set("foo", 1).set("bar", 2);
+   */
+  public JSONObject set(String key, Object value) {
+    super.put(key, value);
+    return this;
+  }
+  
   @Override public void writeJSONBytes(OutputStream out) throws IOException {
     out.write('{');
 
     boolean first = true;
-    OutputStreamWriter writer = new OutputStreamWriter(new FlushlessOutputStream(out));
     
     for (Map.Entry<String, Object> entry : entrySet()) {
       if (first)
         first = false;
       else
-        writer.write(',');
+        out.write(',');
       
-      writer.write('\"');
-      writer.write(escape(String.valueOf(entry.getKey())));
-      writer.write('\"');
-      writer.write(':');
-      writer.flush();
+      out.write('\"');
+      JSONValue.escape(String.valueOf(entry.getKey()), out);
+      out.write('\"');
+      out.write(':');
       
       if (entry.getValue() instanceof JSONStreamAware) {
         ((JSONStreamAware)entry.getValue()).writeJSONBytes(out);
@@ -63,25 +63,11 @@ public class JSONObject extends HashMap<String, Object> implements JSONStreamAwa
         JSONValue.writeJSONBytes(entry.getValue(), out);
       }
     }
-    writer.flush();
 
     out.write('}');
   }
 
-  @Override
-  public String toString() {
+  @Override public String toString() {
     return JSONValue.toJSONString(this);
-  }
-
-  /**
-   * Escape quotes, \, /, \r, \n, \b, \f, \t and other control characters
-   * (U+0000 through U+001F). It's the same as JSONValue.escape() only for
-   * compatibility here.
-   * 
-   * @param s
-   * @return
-   */
-  public static String escape(String s) {
-    return JSONValue.escape(s);
   }
 }

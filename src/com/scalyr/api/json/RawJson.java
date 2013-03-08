@@ -13,9 +13,6 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
  * limitations under the License.
- * 
- * Taken from the json-simple library, by Yidong Fang and Chris Nokleberg.
- * This copy has been modified by Scalyr, Inc.; see README.txt for details.
  */
 
 package com.scalyr.api.json;

@@ -31,6 +31,12 @@ public class JSONParser {
    */
   private final byte[] numberBuf = new byte[100];
   
+  /**
+   * If true, then we allow commas to be ommitted in array and object declarations, so long as there
+   * is a line break between subsequent values.
+   */
+  public boolean allowMissingCommas = true;
+  
   public JSONParser(ByteScanner scanner) {
     this.scanner = scanner;
   }
@@ -85,21 +91,23 @@ public class JSONParser {
       String key = null;
       int c = readNextNonWhitespace();
       
-      // Check for end-of-object. This will occur for an empty object (open-brace followed
-      // immediatel by close-brace), or if there was a trailing comma in the attribute list.
-      // Trailing commas are against JSON spec, but we allow them for convenience.
-      if (c == '}')
-        return object;
-      
       int nameStart = scanner.getPos() - 1;
-      if (c == '"')
+      if (c == '"') {
         key = parseString();
-      else if (c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'))
+      } else if (c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')) {
         key = parseIdentifier(c);
-      else if (c < 0)
+        
+        int nextChar = scanner.peekUByteOrFlag();
+        if (nextChar > 32 && nextChar != ':')
+          error("to use character '" + (char)nextChar
+              + "' in an attribute name, you must place the attribute name in double-quotes", scanner.getPos());
+      } else if (c == '}') { // end-of-object
+        return object;
+      } else if (c < 0) {
         error("Need '}' for end of object", objectStart);
-      else
+      } else {
         error("Expected string literal for object attribute name");
+      }
       
       int nameEnd = scanner.getPos();
       c = readNextNonWhitespace();
@@ -110,18 +118,21 @@ public class JSONParser {
       int valueStart = scanner.getPos();
       object.put(key, parseValue());
       
-      c = readNextNonWhitespace();
-      if (c == '}') {
-        break;
-      }
-      
-      if (c == -1)
+      c = peekNextNonWhitespace();
+      if (c == -1) {
         error("Need '}' for end of object", objectStart);
-      else if (c != ',')
-        error("After object field, expected ',' or '}' but found '" + (char)c + "'");
+      } else if (c == '}') {
+        // do nothing; we'll process the '}' back around at the top of the loop.
+      } else if (c == ',') {
+        readNextNonWhitespace();
+      } else {
+        if (scanner.preceedingLineBreak() && allowMissingCommas) {
+          // proceed, inferring a comma
+        } else {
+          error("After object field, expected ',' or '}' but found '" + (char)c + "'... are you missing a comma?");
+        }
+      }
     }
-    
-    return object;
   }
   
   /**
@@ -133,9 +144,7 @@ public class JSONParser {
     array = new JSONArray();
     
     while (true) {
-      // Check for end-of-array. This will occur for an empty array (open-bracket followed
-      // immediatel by close-bracket), or if there was a trailing comma in the array.
-      // Trailing commas are against JSON spec, but we allow them for convenience.
+      // Check for end-of-array.
       if (peekNextNonWhitespace() == ']') {
         scanner.readUByte();
         return array;
@@ -144,18 +153,21 @@ public class JSONParser {
       peekNextNonWhitespace(); // skip any whitespace
       int valueStartPos = scanner.getPos();
       array.add(parseValue());
-      int c = readNextNonWhitespace();
-      if (c == ']') {
-        break;
-      }
-      
-      if (c == -1)
+      int c = peekNextNonWhitespace();
+      if (c == -1) {
         error("Array has no terminating '['", arrayStart);
-      else if (c != ',')
-        error("Unexpected character [" + (char)c + "] in array");
+      } else if (c == ']') {
+        // do nothing; we'll process the ']' back around at the top of the loop.
+      } else if (c == ',') {
+        readNextNonWhitespace();
+      } else {
+        if (scanner.preceedingLineBreak() && allowMissingCommas) {
+          // proceed, inferring a comma
+        } else {
+          error("Unexpected character [" + (char)c + "] in array... are you missing a comma?");
+        }
+      }
     }
-    
-    return array;
   }
   
   /**
@@ -225,14 +237,16 @@ public class JSONParser {
         throw new JsonParseException("string literal not terminated", startPos-1, lineNumberForBytePos(scanner.buffer, startPos-1));
       
       int c = scanner.readUByte();
-      if (c == '"')
+      if (c == '"') {
         break;
-      
-      if (c == '\\') {
+      } else if (c == '\\') {
         if (scanner.atEnd())
           error("incomplete backslash sequence");
         scanner.readUByte();
         len++;
+      } else if (c == '\r' || c == '\n') {
+        throw new JsonParseException("string literal not terminated before end of line", startPos-1,
+            lineNumberForBytePos(scanner.buffer, startPos-1));
       }
       
       len++;
@@ -567,6 +581,23 @@ public class JSONParser {
     
     public void readBytesFromBuffer(int startPos, byte[] destination, int destPos, int length) {
       System.arraycopy(buffer, startPos, destination, destPos, length);
+    }
+    
+    /**
+     * Return true if the current input position is preceeded by a sequence of
+     * whitespace characters that includes at least one line break (CR and/or LF).
+     */
+    public boolean preceedingLineBreak() {
+      for (int i = pos - 1; i >= 0; i--) {
+        int b = buffer[i] & 255;
+        if (b == '\r' || b == '\n')
+          return true;
+        else if (b == ' ' || b == '\t')
+          continue;
+        
+        break;
+      }
+      return false;
     }
   }
   
