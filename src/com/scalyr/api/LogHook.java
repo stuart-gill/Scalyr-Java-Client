@@ -37,7 +37,24 @@ public abstract class LogHook {
    */
   public abstract void log(Severity severity, String tag, String message, Throwable ex);
   
+  /**
+   * Log a message regarding the internal functioning of the Scalyr client library. Messages with no
+   * specific sender may be sent to the other overload of log().
+   * 
+   * @param sender Internal object which generated this log message, or null. For internal use only.
+   * @param severity Severity / importance of this message.
+   * @param tag An invariant identifier for this message.
+   * @param message Human-readable message.
+   * @param ex Exception associated with this message, or null.
+   */
+  public void log(Object sender, Severity severity, String tag, String message, Throwable ex) {
+    log(severity, tag, message, ex);
+  }
+  
   public static class ThresholdLogger extends LogHook {
+    /**
+     * Messages below this severity are not logged.
+     */
     private final Severity minSeverity;
     
     /**
@@ -58,6 +75,11 @@ public abstract class LogHook {
     private final SimpleRateLimiter overflowLimiter = new SimpleRateLimiter(
         1.0 / TuningConstants.DIAGNOSTIC_OVERFLOW_WARNING_INTERVAL_SECS, 1.0);
     
+    /**
+     * We add this prefix to all log messages, immediately after the date. 
+     */
+    private final String prefix;
+    
     public ThresholdLogger(Severity minSeverity) {
       this(minSeverity,
           new SimpleRateLimiter(TuningConstants.MAX_DIAGNOSTIC_MESSAGES_PER_SECOND,
@@ -67,9 +89,15 @@ public abstract class LogHook {
     }
     
     public ThresholdLogger(Severity minSeverity, SimpleRateLimiter rateLimiter, SimpleRateLimiter knobFileInvalidRateLimiter) {
+      this(minSeverity, rateLimiter, knobFileInvalidRateLimiter, ": ");
+    }
+    
+    public ThresholdLogger(Severity minSeverity, SimpleRateLimiter rateLimiter, SimpleRateLimiter knobFileInvalidRateLimiter,
+        String prefix) {
       this.minSeverity = minSeverity;
       this.rateLimiter = rateLimiter;
       this.knobFileInvalidRateLimiter = knobFileInvalidRateLimiter; 
+      this.prefix = prefix; 
     }
     
     @Override public void log(Severity severity, String tag, String message, Throwable ex) {
@@ -77,7 +105,7 @@ public abstract class LogHook {
       if (severity.ordinal() >= minSeverity.ordinal()) {
         SimpleRateLimiter limiter = (tag.equals(Logging.tagKnobFileInvalid)) ? knobFileInvalidRateLimiter : rateLimiter;
         if (limiter.consume(1.0)) {
-          System.out.println(new Date() + ": " + tag + " (" + message + ")");
+          System.out.println(new Date() + prefix + tag + " (" + message + ")");
           if (ex != null)
             ex.printStackTrace(System.out);
         } else {

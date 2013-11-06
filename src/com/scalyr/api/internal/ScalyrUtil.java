@@ -228,9 +228,12 @@ public class ScalyrUtil {
   
   /**
    * Equivalent to System.nanoTime(), but based off the 1/1/1970 epoch like currentTimeMillis().
-   * Does not respect setCustomTimeMs.
    */
   public static long nanoTime() {
-    return System.nanoTime() + nanoTimeOffset;
+    long custom = customTimeMs.get();
+    if (custom == -1)
+      return System.nanoTime() + nanoTimeOffset;
+    else
+      return custom * 1000000L;
   }
 }

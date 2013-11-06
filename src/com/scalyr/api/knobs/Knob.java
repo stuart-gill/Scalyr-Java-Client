@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import com.scalyr.api.Callback;
 import com.scalyr.api.Converter;
 import com.scalyr.api.ScalyrDeadlineException;
+import com.scalyr.api.TuningConstants;
 import com.scalyr.api.internal.Logging;
 import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONObject;
@@ -56,7 +57,7 @@ public class Knob {
   private boolean useDefaultFiles;
   
   /**
-   * The key we look for in each file.
+   * The key we look for in each file. If null, then we always use our default value.
    */
   private final java.lang.String key;
   
@@ -66,24 +67,32 @@ public class Knob {
   private final Object defaultValue;
   
   /**
-   * False until we first retrieve a value from the configuration file.
+   * False until we first retrieve a value from the configuration file. Once this is true, it will never
+   * be false.
    */
-  private boolean hasValue;
+  private volatile boolean hasValue;
+  
+  /**
+   * True if we are sure that our value is up to date with respect to the underlying configuration files.
+   * Always false if hasValue is false.
+   */
+  private volatile boolean valueUpToDate;
   
   /**
    * The most recently observed value. Undefined if hasValue is false.
    */
-  private Object value;
+  private volatile Object value;
   
   /**
-   * Value of ConfigurationFile.globalChangeCounter when we last updated our value. Undefined if
-   * hasValue is false.
+   * The number of times we've had to fetch our value from the configuration file. Used to decide when to
+   * create a file listener and proactively track the value.
    */
-  private int globalChangeCounter;
+  private int uncachedFetchCount;
   
   /**
-   * Callback used to listen for changes in the underlying file, or null if we are not
-   * currently listening. We listen if and only if updateListeners is nonempty.
+   * Callback used to listen for changes in the underlying file, or null if we are not currently
+   * listening. We listen if updateListeners is nonempty, or if this knob has been fetched enough
+   * times that it's worth caching.
    */
   private Callback<ConfigurationFile> fileListener;
   
@@ -107,7 +116,7 @@ public class Knob {
   }
   
   /**
-   * @param key The key to look for (a fieldname of the top-level JSON object in the file).
+   * @param key The key to look for (a fieldname of the top-level JSON object in the file), or null to always use defaultValue.
    * @param defaultValue Value to return from {@link #get()} if the file does not exist or does not
    *     contain the key.
    * @param files The files in which we look for the value. We use the first file that
@@ -138,10 +147,10 @@ public class Knob {
   /**
    * Return a value from the first configuration file which contains the specified key.
    * <p>
-   * Ignore any files which do not exist. If none of the files contain the key, return defaultValue.
+   * Ignore any files which do not exist. If none of the files contain the key, or the key is null, return defaultValue.
    * If any file has not yet been retrieved from the server, we block until it can be retrieved.
    * 
-   * @param valueKey A key into the top-level object in that file.
+   * @param valueKey A key into the top-level object in that file, or null to force the default value.
    * @param defaultValue Value to return if the file does not exist or does not contain the key.
    * @param files The files in which we search for the value.
    */
@@ -187,7 +196,7 @@ public class Knob {
   /**
    * Return the value at the specified key in our file.
    * 
-   * If the file does not exist or does not contain the key, return our default value.
+   * If the file does not exist or does not contain the key (or the key is null), return our default value.
    * If the file has not yet been retrieved from the server, we block until it can be retrieved.
    */
   public Object get() {
@@ -201,35 +210,61 @@ public class Knob {
    * @throws ScalyrDeadlineException
    */
   public Object getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-    int globalChangeCounterSnapshot = ConfigurationFile.globalChangeCounter.get();
-    synchronized (this) {
-      if (hasValue && globalChangeCounter == globalChangeCounterSnapshot)
-        return value;
-    }
-    
-    long entryTime = (timeoutInMs != null) ? ScalyrUtil.currentTimeMillis() : 0;
-    
+    return getWithTimeout(timeoutInMs, false);
+  }
+  
+  /**
+   * Like get(), but if the file has not yet been retrieved from the server, and the specified time
+   * interval elapses before the file is retrieved from the server, throw a ScalyrDeadlineException.
+   * 
+   * @param timeoutInMs Maximum amount of time to wait for the initial file retrieval. Null means
+   *     to wait as long as needed.
+   * @param bypassCache If true, then we always examine the configuration file(s), rather than relying on
+   *     our cached value for the knob.
+   * 
+   * @throws ScalyrDeadlineException
+   */
+  public Object getWithTimeout(java.lang.Long timeoutInMs, boolean bypassCache) throws ScalyrDeadlineException {
+    if (!bypassCache && valueUpToDate)
+      return value;
+  
     Object newValue = defaultValue;
-    prepareFilesList();
-    for (ConfigurationFile file : files) {
-      JSONObject parsedFile;
-      try {
-        if (timeoutInMs != null) {
-          long elapsed = Math.max(ScalyrUtil.currentTimeMillis() - entryTime, 0);
-          parsedFile = file.getAsJsonWithTimeout(timeoutInMs - elapsed, timeoutInMs);
-        } else {
-          parsedFile = file.getAsJson();
+    boolean ensuredFileListener = false;
+    if (key != null) {
+      synchronized (this) {
+        uncachedFetchCount++;
+        if (uncachedFetchCount >= TuningConstants.KNOB_CACHE_THRESHOLD) {
+          // Ensure that we have a fileListener, so that we can update our value if the configuration
+          // file(s) change. We do this unless the knob is fetched repeatedly, because the fileListener
+          // will prevent this Knob object from ever being garbage collected.
+          ensureFileListener();
+          ensuredFileListener = true;
         }
-      } catch (BadConfigurationFileException ex) {
-        parsedFile = null;
-        
-        Logging.log(Severity.info, Logging.tagKnobFileInvalid,
-            "Knob: ignoring file [" + file + "]: it does not contain valid JSON");
       }
       
-      if (parsedFile != null && parsedFile.containsKey(key)) {
-        newValue = parsedFile.get(key);
-        break;
+      long entryTime = (timeoutInMs != null) ? ScalyrUtil.currentTimeMillis() : 0;
+    
+      prepareFilesList();
+      for (ConfigurationFile file : files) {
+        JSONObject parsedFile;
+        try {
+          if (timeoutInMs != null) {
+            long elapsed = Math.max(ScalyrUtil.currentTimeMillis() - entryTime, 0);
+            parsedFile = file.getAsJsonWithTimeout(timeoutInMs - elapsed, timeoutInMs);
+          } else {
+            parsedFile = file.getAsJson();
+          }
+        } catch (BadConfigurationFileException ex) {
+          parsedFile = null;
+        
+          Logging.log(Severity.info, Logging.tagKnobFileInvalid,
+              "Knob: ignoring file [" + file + "]: it does not contain valid JSON");
+        }
+      
+        if (parsedFile != null && parsedFile.containsKey(key)) {
+          newValue = parsedFile.get(key);
+          break;
+        }
       }
     }
     
@@ -239,7 +274,8 @@ public class Knob {
       
       value = newValue;
       hasValue = true;
-      globalChangeCounter = globalChangeCounterSnapshot;
+      if (ensuredFileListener)
+        valueUpToDate = true;
       
       if (!hadValue || !ScalyrUtil.equals(value, oldValue)) {
         List<Callback<Knob>> listenerSnapshot = new ArrayList<Callback<Knob>>(updateListeners);
@@ -248,7 +284,7 @@ public class Knob {
         }
       }
       
-      return value;
+      return newValue;
     }
   }
   
@@ -257,18 +293,27 @@ public class Knob {
    */
   public synchronized Knob addUpdateListener(Callback<Knob> updateListener) {
     if (updateListeners.size() == 0) {
+      ensureFileListener();
+    }
+    updateListeners.add(updateListener);
+    
+    return this;
+  }
+  
+  /**
+   * If we don't yet have a fileListener, then add one.
+   */
+  private synchronized void ensureFileListener() {
+    if (fileListener == null) {
       fileListener = new Callback<ConfigurationFile>(){
         @Override public void run(ConfigurationFile updatedFile) {
           if (allFilesHaveValues())
-            get();
+            getWithTimeout(null, true);
         }};
       prepareFilesList();
       for (ConfigurationFile file : files)
         file.addUpdateListener(fileListener);
     }
-    updateListeners.add(updateListener);
-    
-    return this;
   }
   
   protected synchronized boolean allFilesHaveValues() {
@@ -285,14 +330,6 @@ public class Knob {
    */
   public synchronized Knob removeUpdateListener(Callback<Knob> updateListener) {
     updateListeners.remove(updateListener);
-    
-    if (updateListeners.size() == 0) {
-      prepareFilesList();
-      for (ConfigurationFile file : files)
-        file.removeUpdateListener(fileListener);
-      fileListener = null;
-    }
-    
     return this;
   }
   

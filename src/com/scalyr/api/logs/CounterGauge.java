@@ -28,7 +28,7 @@ public class CounterGauge extends Gauge {
   /**
    * The current value of the counter.
    */
-  private double value = 0;
+  private final AtomicDouble value = new AtomicDouble();
   
   /**
    * Create a CounterGauge, and register it under the specified attributes.
@@ -41,23 +41,23 @@ public class CounterGauge extends Gauge {
    * Create a CounterGauge with the specified value, and register it under the specified attributes.
    */
   public CounterGauge(EventAttributes attributes, double initialValue) {
-    this.value = initialValue;
+    value.set(initialValue);
     Gauge.register(this, attributes);
   }
   
   /**
    * Return the current counter value.
    */
-  public synchronized double getValue() {
-    return value;
+  public double getValue() {
+    return value.get();
   }
   
   /**
    * Set the current counter value, overwriting the previous value. To increment the value,
    * call increment().
    */
-  public synchronized void setValue(double x) {
-    value = x;
+  public void setValue(double x) {
+    value.set(x);
   }
   
   /**
@@ -70,15 +70,15 @@ public class CounterGauge extends Gauge {
   /**
    * Increment the counter by the specified delta.
    */
-  public synchronized void increment(double delta) {
-    value += delta;
+  public void increment(double delta) {
+    value.add(delta);
   }
   
   /**
    * Implementation of Gauge.sample().
    */
-  @Override public synchronized Object sample() {
-    return value;
+  @Override public Object sample() {
+    return value.get();
   }
 
   /**
@@ -87,8 +87,8 @@ public class CounterGauge extends Gauge {
   private static Map<EventAttributes, CounterGauge> counterTable = new HashMap<EventAttributes, CounterGauge>();
   
   /**
-   * Create a CounterGauge with the specified attributes. If this method has been called previously
-   * with the same attributes, we re-use the same CounterGauge. Either way, we then increment the
+   * Create a CounterGauge with the specified attributes. If this method (or setValue) has been called
+   * previously with the same attributes, we re-use the same CounterGauge. Either way, we then increment the
    * counter by the specified delta.
    * <p>
    * This method allows you to record counters associated with variable attributes, without having
@@ -109,5 +109,30 @@ public class CounterGauge extends Gauge {
     }
     
     counter.increment(delta);
+  }
+  
+  /**
+   * Create a CounterGauge with the specified attributes. If this method (or increment) has been called
+   * previously with the same attributes, we re-use the same CounterGauge. Either way, we then set the
+   * counter to the specified value.
+   * <p>
+   * This method allows you to record values associated with variable attributes, without having
+   * to explicitly maintain a set of CounterGauges. You should be careful to limit the number of
+   * distinct attribute sets used, as each unique CounterGauge imposes a certain resource cost
+   * (primarily the CPU and bandwidth cost of periodically logging its value). Beyond a few hundred
+   * Gauges, you should start to keep an eye on the cost.
+   */
+  public static void setStaticValue(EventAttributes attributes, double value) {
+    CounterGauge counter;
+    
+    synchronized (counterTable) {
+      counter = counterTable.get(attributes);
+      if (counter == null) {
+        counter = new CounterGauge(attributes);
+        counterTable.put(attributes, counter);
+      }
+    }
+    
+    counter.setValue(value);
   }
 }

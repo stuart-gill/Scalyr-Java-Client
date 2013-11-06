@@ -385,9 +385,27 @@ public class Events {
    * expires).
    */
   public static synchronized void flush() {
+    flush(0L);
+  }
+  
+  /**
+   * Force all events recorded so far to be uploaded to the server.
+   * <p>
+   * It is not normally necessary to call this method, as events are automatically uploaded
+   * every few seconds. However, you may wish to call it when the process terminates, to ensure
+   * that any trailing events reach the server. Note that, unlike most Scalyr API methods, this
+   * method will block until a response is received from the server (or a fairly lengthy timeout
+   * expires).
+   * 
+   * @param waitTimeoutMs the maximum time this method will block waiting for the flush to finish.
+   *     a non-positive value will result in blocking indefinitely
+   * @return true if all event enqueued before flush was invoked are actually flushed
+   */
+  public static synchronized boolean flush(long waitTimeoutMs) {
     EventUploader instance = uploaderInstance.get();
     if (instance != null)
-      instance.flush();
+      return instance.flush(waitTimeoutMs);
+    return false;
   }
   
   /**

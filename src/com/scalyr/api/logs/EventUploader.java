@@ -28,6 +28,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 import java.util.Timer;
 import java.util.TimerTask;
 
@@ -91,6 +92,14 @@ public class EventUploader {
    * Hostname of this server.
    */
   private String ourHostname;
+  
+  /**
+   * Random number generator used to avoid having multiple clients all upload events at the exact
+   * same time. Synchronize access.
+   */
+  private final Random random = new Random();
+  
+  private int uploadSpacingFuzzFactor = random.nextInt(TuningConstants.EVENT_UPLOAD_CHECK_INTERVAL);
   
   /**
    * ThreadLocal for tracking information per thread -- thread ID, name, etc.
@@ -279,6 +288,19 @@ public class EventUploader {
     threadEvents.get().event(severity, event, timestampNs);
   }
   
+  /**
+   * Add an event to our buffer. Associate the event with the given thread information, not the calling thread.
+   * <p>
+   * THIS METHOD IS INTENDED FOR INTERNAL USE ONLY.
+   */
+  public void rawEventOnExplicitThread(String threadId, String threadName, Severity severity, EventAttributes attributes) {
+    PerThreadState threadState = getThreadState(threadId, threadName);
+    
+    synchronized (threadState) {
+      threadState.event(severity, attributes);
+    }
+  }
+  
   synchronized void terminate() {
     if (uploadTask != null)
       uploadTask.cancel();
@@ -289,15 +311,38 @@ public class EventUploader {
   
   /**
    * Force all events recorded to date to be uploaded to the server.
-   * 
+   * <p>
    * (NOTE: this is not foolproof. If the server request fails, or an upload was already in progress
-   * when we are called, some events may not be uploaded. This method is only used in tests.)
+   * when we are called, some events may not be uploaded. This method should only be used where best-effort
+   * is ok.)
    */
   synchronized void flush() {
+    flush(0L);
+  }
+  
+  /**
+   * Force all events recorded to date to be uploaded to the server.
+   * <p>
+   * (NOTE: this is not foolproof. If the server request fails, or an upload was already in progress
+   * when we are called, some events may not be uploaded. This method should only be used where best-effort
+   * is ok.)
+   * <p>
+   * THIS METHOD IS INTENDED FOR INTERNAL USE ONLY.
+   * 
+   * @param waitTimeMs the maximum number of milliseconds this method should block for while
+   *     waiting for the flush to complete.  a non-positive value will cause the method to block
+   *     indefinitely.
+   * @return true if all events that were enqueued when flush was invoked are actually flushed
+   */
+  public synchronized boolean flush(long waitTimeMs) {
     long bytesWrittenPriorToFlush;
     synchronized (chunkSizes) {
       bytesWrittenPriorToFlush = totalBytesWritten;
     }
+
+    long deadline = -1;
+    if (waitTimeMs > 0)
+      deadline = System.currentTimeMillis() + waitTimeMs;
     
     // Upload a chunk at a time until all data prior to our invocation is gone. Sleep briefly
     // between invocations, in part to avoid frantic spinning if an upload is already in progress
@@ -307,18 +352,39 @@ public class EventUploader {
       synchronized (chunkSizes) {
         long bytesWrittenSinceFlush = totalBytesWritten - bytesWrittenPriorToFlush;
         if (pendingEventBuffer.numBufferedBytes() <= bytesWrittenSinceFlush) {
-          break;
+          return true;
         }
       }
+
+      long remainingMs = deadline - System.currentTimeMillis();
+      if ((deadline > 0) && (remainingMs <= 0))
+        return false;
       
       uploadTimerTick(true);
-      
+
       try {
-        Thread.sleep(sleepMs);
+        Thread.sleep(deadline <= 0 ? sleepMs : Math.min(sleepMs, remainingMs));
         sleepMs = Math.min(sleepMs * 2, 10000);
       } catch (InterruptedException ex) {
         throw new RuntimeException(ex);
       }
+    }
+  }
+  
+  /**
+   * Close this EventUploader, shutting down our background timer that uploads events.
+   * <p>
+   * THIS METHOD IS INTENDED FOR INTERNAL USE ONLY.
+   */
+  public synchronized void closeAfterTest() {
+    if (uploadTask != null) {
+      uploadTask.cancel();
+      uploadTask = null;
+    }
+    
+    if (uploadTimer != null) {
+      uploadTimer.cancel();
+      uploadTimer = null;
     }
   }
   
@@ -388,18 +454,18 @@ public class EventUploader {
       }});
     
     JSONObject sessionInfo = new JSONObject();
+    
+    // Note: any new attributes defined here, should be masked in MetaLogger.
     sessionInfo.put("session", sessionId);
     sessionInfo.put("launchTime", launchTimeNs);
-    
+    if (ourHostname != null)
+      sessionInfo.put("serverHost", ourHostname);
     // We no longer explicitly report our IP address as a session attribute, as
     // the Scalyr Logs server adds this automatically (under the name "serverIp").
     // 
     // if (ourIpAddress != null)
     //   sessionInfo.put("serverIp", ourIpAddress);
     
-    if (ourHostname != null)
-      sessionInfo.put("serverHost", ourHostname);
-
     if (serverAttributes != null)
       for (Map.Entry<String, Object> entry : serverAttributes.values.entrySet())
         sessionInfo.put(entry.getKey(), entry.getValue());
@@ -458,7 +524,7 @@ public class EventUploader {
         } else {
           printFailure("Server response had bad status [" + rawStatus + "]; complete text: " + parsedResponse.toString());
           
-          Logging.log(Severity.warning, Logging.tagServerError,
+          Logging.log(EventUploader.this, Severity.warning, Logging.tagServerError,
               "Bad response from Scalyr Logs (status [" + status + "], message [" +
               parsedResponse.get("message") + "])");
           
@@ -516,7 +582,7 @@ public class EventUploader {
       System.out.println("UPLOAD FAILURE: " + message);
     }
   }
-
+  
   /**
    * Return if it's time to initiate a new upload batch, return the number of event payload bytes
    * (from pendingEventBuffer) to upload. Otherwise return -1.
@@ -550,12 +616,15 @@ public class EventUploader {
       // an upload.
       boolean bufferFairlyFull = (bufferedBytes > _eventUploadByteThreshold);
       boolean itsBeenAWhile = (lastUploadStartMs == null
-          || nowMs - lastUploadStartMs >= TuningConstants.EVENT_UPLOAD_TIME_THRESHOLD_MS);
+          || nowMs - lastUploadStartMs >= TuningConstants.EVENT_UPLOAD_TIME_THRESHOLD_MS + uploadSpacingFuzzFactor);
       
       if (bypassWaitTimers || bufferFairlyFull || itsBeenAWhile) {
         // Prevent further data from being added to this chunk.
         chunkSizes.closeFirst();
         
+        synchronized (random) {
+          uploadSpacingFuzzFactor = random.nextInt(TuningConstants.EVENT_UPLOAD_CHECK_INTERVAL);
+        }
         return bufferedBytes;
       } else {
         return -1;
@@ -582,11 +651,18 @@ public class EventUploader {
               if (!_disableUploadTimer)
                 uploadTimerTick(false);
             } catch (Throwable ex) {
-              Logging.log(Severity.warning, Logging.tagInternalError, "Exception in Logs upload timer", ex);
+              Logging.log(EventUploader.this, Severity.warning, Logging.tagInternalError, "Exception in Logs upload timer", ex);
             }
           }};
-        uploadTimer.schedule(uploadTask, TuningConstants.EVENT_UPLOAD_CHECK_INTERVAL,
-            TuningConstants.EVENT_UPLOAD_CHECK_INTERVAL);
+          
+        // Launch a task to periodically check whether it's time to upload events. Randomize the starting time,
+        // to help ensure that clients aren't all uploading at the same time. (Especially important in load tests.)
+        int randomDelay;
+        synchronized (random) {
+          randomDelay = random.nextInt(TuningConstants.EVENT_UPLOAD_CHECK_INTERVAL) + 1;
+        }
+
+        uploadTimer.schedule(uploadTask, randomDelay, TuningConstants.EVENT_UPLOAD_CHECK_INTERVAL);
       }
     }
   }
@@ -841,7 +917,7 @@ public class EventUploader {
         }
         
         if (memoryWarnLimiter.allow(TuningConstants.EVENT_UPLOAD_MEMORY_WARNING_INTERVAL_MS)) {
-          Logging.log(Severity.warning, Logging.tagLogBufferOverflow,
+          Logging.log(EventUploader.this, Severity.warning, Logging.tagLogBufferOverflow,
               "com.scalyr.api.logs: Discarding event, as buffer size of "
               + memoryLimit + " bytes has been reached.");
         }
@@ -869,18 +945,18 @@ public class EventUploader {
    * Most recently assigned timestamp. Used to ensure that timestamps are strictly increasing (within
    * a given process): nanoTime() can sometimes run backwards.
    */
-  private static long lastTimestamp = ScalyrUtil.nanoTime();
+  private long lastTimestamp = ScalyrUtil.nanoTime();
   
   /**
    * Object used to synchronize access to lastTimestamp.
    */
-  private static final Object timestampLocker = new Object();
+  private final Object timestampLocker = new Object();
   
   /**
    * Return the current time (in nanoseconds since the epoch), but strictly greater than any
    * previous result from this method.
    */
-  private static long getMonotonicNanos() {
+  private long getMonotonicNanos() {
     long now = ScalyrUtil.nanoTime();
     synchronized (timestampLocker) {
       // TODO: warn when nanoTime runs backwards.

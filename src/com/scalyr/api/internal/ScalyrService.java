@@ -116,7 +116,7 @@ public abstract class ScalyrService {
    * Invoke methodName on a selected server, sending the specified parameters as the request
    * body. Return the (JSON-format) response.
    * <p>
-   * If "retriable" error (e.g. a network error) occurs, we retry on another server. We continue
+   * If a "retriable" error (e.g. a network error) occurs, we retry on another server. We continue
    * retrying until a non-retriable error occurs, there are no more servers to try, or a reasonable
    * deadline (TuningConstants.MAXIMUM_RETRY_PERIOD_MS) expires.
    * <p>
@@ -126,6 +126,42 @@ public abstract class ScalyrService {
    * @throws ScalyrNetworkException
    */
   public JSONObject invokeApi(String methodName, JSONObject parameters) {
+    return invokeApiX(methodName, parameters).response;
+  }
+  
+  /**
+   * Invoke methodName on a selected server, sending the specified parameters as the request
+   * body. Return the (JSON-format) response, as well as additional data about the request and
+   * response.
+   * <p>
+   * If a "retriable" error (e.g. a network error) occurs, we retry on another server. We continue
+   * retrying until a non-retriable error occurs, there are no more servers to try, or a reasonable
+   * deadline (TuningConstants.MAXIMUM_RETRY_PERIOD_MS) expires.
+   * <p>
+   * This method should not be called directly. Instead, work through method-specific wrappers.
+   * 
+   * @throws ScalyrException
+   * @throws ScalyrNetworkException
+   */
+  public InvokeApiResult invokeApiX(String methodName, JSONObject parameters) {
+    return invokeApiX(methodName, parameters, new RpcOptions());
+  }
+  
+  /**
+   * Invoke methodName on a selected server, sending the specified parameters as the request
+   * body. Return the (JSON-format) response, as well as additional data about the request and
+   * response.
+   * <p>
+   * If a "retriable" error (e.g. a network error) occurs, we retry on another server. We continue
+   * retrying until a non-retriable error occurs, there are no more servers to try, or a reasonable
+   * deadline (TuningConstants.MAXIMUM_RETRY_PERIOD_MS) expires.
+   * <p>
+   * This method should not be called directly. Instead, work through method-specific wrappers.
+   * 
+   * @throws ScalyrException
+   * @throws ScalyrNetworkException
+   */
+  public InvokeApiResult invokeApiX(String methodName, JSONObject parameters, RpcOptions options) {
     // Produce a shuffled copy of the server addresses, so that load is distributed
     // across the servers.
     int N = serverAddresses.length;
@@ -146,7 +182,7 @@ public abstract class ScalyrService {
       String serverAddress = shuffled[serverIndex];
       long requestStartTimeMs = ScalyrUtil.currentTimeMillis();
       try {
-        return invokeApiOnServer(serverAddress, methodName, parameters);
+        return invokeApiOnServer(serverAddress, methodName, parameters, options);
       } catch (ScalyrNetworkException ex) {
         // Fall into the loop and retry the operation on the next server.
         // If there are no more servers, or our deadline has expired, then
@@ -161,7 +197,7 @@ public abstract class ScalyrService {
               "invokeApi: " + methodName + " failed on " + serverAddress
               + " (after " + requestElapsedMs + " milliseconds); no more servers to try, so giving up", ex);
           throw ex;
-        } else if (totalElapsedMs >= TuningConstants.MAXIMUM_RETRY_PERIOD_MS) {
+        } else if (totalElapsedMs >= options.maxRetryIntervalMs) {
           Logging.log(Severity.warning, Logging.tagServerError,
               "invokeApi: " + methodName + " failed on " + serverAddress
               + "; maximum retry period of " + TuningConstants.MAXIMUM_RETRY_PERIOD_MS
@@ -174,7 +210,54 @@ public abstract class ScalyrService {
       }
     }
   }
+  
+  /**
+   * Options used when sending a request to a server.
+   */
+  public static class RpcOptions {
+    /**
+     * HTTP connextion timeout (see HttpURLConnection.setConnectTimeout).
+     */
+    public int connectionTimeoutMs = TuningConstants.HTTP_CONNECT_TIMEOUT_MS;
+    
+    /**
+     * HTTP read timeout (see HttpURLConnection.setReadTimeout).
+     */
+    public int readTimeoutMs = TuningConstants.MAXIMUM_RETRY_PERIOD_MS;
+    
+    /**
+     * Time span during which API operations may be retried (e.g. in response to a network
+     * error). Once this many milliseconds have elapsed from the initial API invocation, we
+     * no longer issue retries.
+     */
+    public int maxRetryIntervalMs = TuningConstants.MAXIMUM_RETRY_PERIOD_MS;
+  }
 
+  /**
+   * Values returned by invokeApiX: the RPC response, plus diagnostic data.
+   */
+  public static class InvokeApiResult {
+    /**
+     * Parsed response from the server.
+     */
+    public JSONObject response;
+    
+    /**
+     * Length of the serialized JSON request, in bytes.
+     */
+    public int requestLength;
+    
+    /**
+     * Length of the serialized JSON response, in bytes.
+     */
+    public int responseLength;
+    
+    /**
+     * The latency of the request in milliseconds.
+     */
+    public int latencyMs;
+  }
+  
   /**
    * Invoke serverAddress/methodName on the server, sending the specified parameters as the request
    * body. Return the (JSON-format) response.
@@ -182,7 +265,8 @@ public abstract class ScalyrService {
    * @throws ScalyrException
    * @throws ScalyrNetworkException
    */
-  protected JSONObject invokeApiOnServer(String serverAddress, String methodName, JSONObject parameters) {
+  protected InvokeApiResult invokeApiOnServer(String serverAddress, String methodName, JSONObject parameters,
+      RpcOptions options) {
     HttpURLConnection connection = null;  
     try {
       // Send the request.
@@ -192,8 +276,8 @@ public abstract class ScalyrService {
       connection.setRequestMethod("POST");
       connection.setUseCaches(false);
       connection.setDoInput(true);
-      connection.setConnectTimeout(TuningConstants.HTTP_CONNECT_TIMEOUT_MS);
-      connection.setReadTimeout(TuningConstants.MAXIMUM_RETRY_PERIOD_MS);
+      connection.setConnectTimeout(options.connectionTimeoutMs);
+      connection.setReadTimeout(options.readTimeoutMs);
       
       CountingOutputStream countingStream = new CountingOutputStream();
       parameters.writeJSONBytes(countingStream);
@@ -219,7 +303,7 @@ public abstract class ScalyrService {
       // We no longer explicitly close, so that HTTP keepalive can function.
       // reader.close();
       
-      long runtimeMs = ScalyrUtil.currentTimeMillis() - startTimeMs;
+      int runtimeMs = (int) (ScalyrUtil.currentTimeMillis() - startTimeMs);
       Logging.log(Severity.fine, Logging.tagServerCommunication,
           serverAddress + "/" + methodName + ": "
           + runtimeMs + " ms, "
@@ -234,14 +318,20 @@ public abstract class ScalyrService {
         throw new ScalyrNetworkException("Scalyr server returned error code " + responseCode);
       }
       
-      Object responseJson = new JSONParser(new ByteScanner(rawResponse)).parseValue();
+      ByteScanner responseScanner = new ByteScanner(rawResponse);
+      Object responseJson = new JSONParser(responseScanner).parseValue();
       if (responseJson instanceof JSONObject) {
         Object status = ((JSONObject)responseJson).get("status");
         Logging.log(Severity.finer, Logging.tagServerCommunication,
             "Response status [" + (status == null ? "(none)" : status) + "]"
             );
         
-        return (JSONObject) responseJson;
+        InvokeApiResult result = new InvokeApiResult();
+        result.requestLength = requestLength;
+        result.responseLength = responseScanner.getPos();
+        result.response = (JSONObject) responseJson;
+        result.latencyMs = runtimeMs;
+        return result;
       } else {
         throw new ScalyrException("Malformed response from Scalyr server");
       }

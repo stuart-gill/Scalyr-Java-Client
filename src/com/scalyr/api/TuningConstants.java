@@ -51,7 +51,7 @@ public class TuningConstants {
   /**
    * Maximum length of an individual attribute in a Scalyr Logs event.
    */
-  public static final int MAXIMUM_EVENT_ATTRIBUTE_LENGTH = 1000;
+  public static final int MAXIMUM_EVENT_ATTRIBUTE_LENGTH = 3500;
   
   /**
    * Interval between warnings that events are being discarded due to buffer overflow.
@@ -103,7 +103,7 @@ public class TuningConstants {
    * Maximum time delay between event batch uploads. This comes into play when
    * the server issues backoff responses and we begin increasing our interval.
    */
-  public static final int MAX_EVENT_UPLOAD_SPACING_MS = 50000;
+  public static final int MAX_EVENT_UPLOAD_SPACING_MS = 30000;
   
   /**
    * Factor by which we adjust our upload spacing after a backoff response.
@@ -113,7 +113,7 @@ public class TuningConstants {
   /**
    * Factor by which we adjust our upload spacing after a successful upload.
    */
-  public static final double UPLOAD_SPACING_FACTOR_ON_SUCCESS = 0.9;
+  public static final double UPLOAD_SPACING_FACTOR_ON_SUCCESS = 0.6;
   
   /**
    * Percentage of EventUploader's buffer that we reserve for use by end
@@ -166,4 +166,10 @@ public class TuningConstants {
    * are being throttled. 
    */
   public static final double DIAGNOSTIC_OVERFLOW_WARNING_INTERVAL_SECS = 10.0;
+  
+  /**
+   * If Knob.get() is called this many times for a given Knob instance, we'll proactively maintain the
+   * knob value from then on, allowing subsequent get() calls to return instantly.
+   */
+  public static final int KNOB_CACHE_THRESHOLD = 100;
 }

@@ -162,10 +162,14 @@ public class JSONValue {
           for (int k = 0; k < 4 - ss.length(); k++) {
             out.write('0');
           }
-          for (int k = 0; i < ss.length(); k++)
+          for (int k = 0; k < ss.length(); k++)
             out.write(Character.toUpperCase(ss.charAt(k)));
         } else {
-          out.write(ch);
+          if (ch <= 127) {
+            out.write(ch);
+          } else {
+            out.write(new String(new char[]{ch}).getBytes(ScalyrUtil.utf8));
+          }
         }
       }
     }

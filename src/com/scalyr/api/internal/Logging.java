@@ -75,6 +75,10 @@ public class Logging {
     log(severity, tag, message, null);
   }
   
+  public static void log(Object sender, Severity severity, String tag, String message) {
+    log(sender, severity, tag, message, null);
+  }
+  
   /**
    * Log a message regarding the internal functioning of the Scalyr client library.
    * 
@@ -86,6 +90,10 @@ public class Logging {
    */
   public static void log(Severity severity, String tag, String message, Throwable ex) {
     hook.log(severity, tag, message, ex);
+  }
+  
+  public static void log(Object sender, Severity severity, String tag, String message, Throwable ex) {
+    hook.log(sender, severity, tag, message, ex);
   }
   
   /**

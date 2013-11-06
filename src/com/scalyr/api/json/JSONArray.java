@@ -59,6 +59,7 @@ public class JSONArray extends ArrayList<Object> implements JSONStreamAware {
     }
     
     out.write(']');
+    writer.close();
   }
   
   @Override public String toString() {

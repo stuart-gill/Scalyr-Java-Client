@@ -291,7 +291,7 @@ public class JSONParser {
         sb.append('\\');
       } else if (c == '/') {
         sb.append('/');
-      } else if (c == 'u') {
+      } else if (c == 'u' && i+5 <= s.length()) {
         String hexString = s.substring(i + 1, i + 5);
         i += 4;
         int hexValue = Integer.parseInt(hexString, 16);

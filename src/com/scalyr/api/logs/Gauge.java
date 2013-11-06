@@ -61,7 +61,7 @@ public abstract class Gauge {
    * Register a gauge. We will record the gauge's value once every 30 seconds, associating
    * the given attributes.
    */
-  public static void register(Gauge gauge, EventAttributes attributes) {
+  public static Gauge register(Gauge gauge, EventAttributes attributes) {
     boolean firstTime = false;
     synchronized (registeredGauges) {
       registeredGauges.put(gauge, attributes);
@@ -88,6 +88,8 @@ public abstract class Gauge {
         }
       }}, StatReporter.attributesWithTag("scalyr.gaugeCount"));
     }
+    
+    return gauge;
   }
   
   private static void recordGaugeValues() {
