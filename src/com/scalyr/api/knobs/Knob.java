@@ -235,8 +235,8 @@ public class Knob {
         uncachedFetchCount++;
         if (uncachedFetchCount >= TuningConstants.KNOB_CACHE_THRESHOLD) {
           // Ensure that we have a fileListener, so that we can update our value if the configuration
-          // file(s) change. We do this unless the knob is fetched repeatedly, because the fileListener
-          // will prevent this Knob object from ever being garbage collected.
+          // file(s) change. We don't this unless the knob is fetched repeatedly, because the fileListener
+          // will prevent this Knob object from ever being garbage collected. !!!
           ensureFileListener();
           ensuredFileListener = true;
         }

@@ -72,7 +72,7 @@ public class KnobService extends ScalyrService {
    *     elapsed. (Note: this is not honored absolutely -- sometimes, the server may return a result
    *     prior to waitTime even if the file has not changed.)
    * 
-   * @return The response from the server. See <a href='https://www.scalyr.com/httpApi'>scalyr.com/httpApi</a>.
+   * @return The response from the server. See <a href='https://www.scalyr.com/help/api'>scalyr.com/help/api</a>.
    * 
    * @throws ScalyrException
    * @throws ScalyrNetworkException
@@ -104,7 +104,7 @@ public class KnobService extends ScalyrService {
    * @param content New content for the file. Pass null if passing deleteFile = true.
    * @param deleteFile True to delete the file, false to create/update it.
    * 
-   * @return The response from the server. See <a href='https://www.scalyr.com/httpApi'>scalyr.com/httpApi</a>.
+   * @return The response from the server. See <a href='https://www.scalyr.com/help/api'>scalyr.com/help/api</a>.
    * 
    * @throws ScalyrException
    * @throws ScalyrNetworkException
@@ -128,7 +128,7 @@ public class KnobService extends ScalyrService {
   /**
    * Retrieve a list of all configuration files.
    * 
-   * @return The response from the server. See <a href='https://www.scalyr.com/httpApi'>scalyr.com/httpApi</a>.
+   * @return The response from the server. See <a href='https://www.scalyr.com/help/api'>scalyr.com/help/api</a>.
    * 
    * @throws ScalyrException
    * @throws ScalyrNetworkException

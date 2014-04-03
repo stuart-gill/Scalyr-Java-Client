@@ -21,11 +21,19 @@ import java.util.HashSet;
 import java.util.Set;
 
 import com.scalyr.api.Callback;
+import com.scalyr.api.knobs.ConfigurationFile;
 import com.scalyr.api.knobs.Knob;
 
 /**
  * A Whitelist provides a quick and efficient way to test whether a given string appears
- * in a comma-delimited list of strings stored in a Knob.
+ * in a comma-delimited list of strings stored in a Knob. The following syntax is supported:
+ * 
+ *   x, y, z  -- One or more options, separated by commas. Leading / trailing whitespace from
+ *               each option is discarded.
+ *   ^x, y, z -- The initial caret indicates that this is a blacklist rather than a whitelist.
+ *               All values *not* appearing in the list are accepted.
+ *   *           Wildcard: all values are accepted.
+ *   ^*          Negative wildcard: no values are accepted.
  */
 public class Whitelist {
   private final Knob.String whitelistKnob;
@@ -37,18 +45,68 @@ public class Whitelist {
   private Set<String> whitelistSet = null;
   
   /**
+   * True if the most recent knob value was a wildcard ("*" or "^*"). Undefined if whitelistSet is
+   * null. Synchronize access on the Whitelist instance.
+   */
+  private boolean wildcard;
+  
+  /**
+   * True if the most recent knob value was a negated value (began with a caret). Undefined if whitelistSet is
+   * null. Synchronize access on the Whitelist instance.
+   */
+  private boolean negated;
+  
+  /**
    * Construct a Whitelist based on the given Knob. The Knob should contain a comma-
    * delimited list of strings. An empty or missing Knob is treated as an empty list.
-   * Leading or trailing whitespace, and whitespace adjacent to commas, is ignored.
+   * Leading or trailing whitespace, and whitespace adjacent to commas, is ignored. See our
+   * class comment for a discussion of wildcards ('*') and negation ('^').
    */
   public Whitelist(Knob.String whitelistKnob) {
     this.whitelistKnob = whitelistKnob;
   }
   
   /**
+   * Construct a Whitelist, based on a Knob with the given constructor arguments. The Knob should contain
+   * a comma-delimited list of strings. An empty or missing Knob is treated as an empty list.
+   * Leading or trailing whitespace, and whitespace adjacent to commas, is ignored. See our
+   * class comment for a discussion of wildcards ('*') and negation ('^').
+   */
+  public Whitelist(java.lang.String key, String defaultValue, ConfigurationFile ... files) {
+    this(new Knob.String(key, defaultValue, files));
+  }
+  
+  /**
    * Return true if the given string appears in the whitelist.
    */
   public synchronized boolean isInWhitelist(String candidate) {
+    prepareValue();
+    
+    if (wildcard)
+      return !negated;
+    else
+      return !negated == whitelistSet.contains(candidate);
+  }
+  
+  /**
+   * Return true if our current value is a non-negated wildcard.
+   */
+  public synchronized boolean acceptsAll() {
+    prepareValue();
+    
+    return wildcard && !negated;
+  }
+  
+  /**
+   * Return true if our current value is a negated wildcard.
+   */
+  public synchronized boolean acceptsNone() {
+    prepareValue();
+    
+    return wildcard && negated;
+  }
+
+  private void prepareValue() {
     if (whitelistSet == null) {
       whitelistSet = new HashSet<String>();
       whitelistKnob.addUpdateListener(new Callback<Knob>(){
@@ -57,19 +115,32 @@ public class Whitelist {
         }});
       rebuildStringSet();
     }
-   
-    return whitelistSet.contains(candidate);
   }
   
   /**
-   * Overwrite whitelistSet with the latest values from the Knob.
+   * Overwrite whitelistSet, wildcard, and negated with the latest values from the Knob.
    */
   private synchronized void rebuildStringSet() {
     whitelistSet.clear();
+    wildcard = false;
+    negated = false;
+    
     String knobValue = whitelistKnob.get();
-    if (knobValue != null)
-      for (String value : knobValue.split(","))
-        whitelistSet.add(value.trim());
+    if (knobValue != null) {
+      knobValue = knobValue.trim();
+      if (knobValue.startsWith("^")) {
+        negated = true;
+        knobValue = knobValue.substring(1).trim();
+      }
+      
+      if (knobValue.equals("*")) {
+        wildcard = true;
+      } else {
+        for (String value : knobValue.split(",")) {
+          whitelistSet.add(value.trim());
+        }
+      }
+    }
   }  
 
 }

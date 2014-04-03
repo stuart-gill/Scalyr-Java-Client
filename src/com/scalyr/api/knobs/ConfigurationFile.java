@@ -107,6 +107,14 @@ public abstract class ConfigurationFile {
     };
   }
   
+  /**
+   * Return a value which increments whenever a change is observed in any configuration file. This
+   * can be used to invalidate caches derived from a configuration file.
+   */
+  public static int getGlobalChangeCounter() {
+    return globalChangeCounter.get();
+  }
+  
   protected ConfigurationFile(String pathname) {
     this.pathname = pathname;
   }

@@ -33,7 +33,7 @@ import com.scalyr.api.internal.Logging;
  * 
  * <pre>
  *   Gauge.register(new Gauge(){
- *     @Override public Object sample() {
+ *     {@literal @}Override public Object sample() {
  *       return someComputation();
  *   }}, new EventAttributes("tag", "foo"));
  * </pre>

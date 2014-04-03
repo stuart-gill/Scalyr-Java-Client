@@ -261,7 +261,7 @@ public class EventUploader {
     try {
       Logging.log(Severity.info, Logging.tagEventUploadSession, "Uploading events from " +
           serverHost + ".  You may view events uploaded by this host at " +
-          "https://log.scalyr.com/events?mode=log&filter=%24serverHost%3D%27" +
+          "https://www.scalyr.com/events?mode=log&filter=%24serverHost%3D%27" +
           URLEncoder.encode(serverHost, "UTF-8") + 
           "%27&startTime=infinity&linesBefore=100&scrollToEnd=true#scrollTop ");
     } catch (UnsupportedEncodingException e) {
@@ -298,6 +298,20 @@ public class EventUploader {
     
     synchronized (threadState) {
       threadState.event(severity, attributes);
+    }
+  }
+  
+  /**
+   * Add an event to our buffer. Associate the event with the given thread information, not the calling thread.
+   * <p>
+   * THIS METHOD IS INTENDED FOR INTERNAL USE ONLY.
+   */
+  public void rawEventOnExplicitThread(String threadId, String threadName, Severity severity, EventAttributes attributes,
+      long timestampNs) {
+    PerThreadState threadState = getThreadState(threadId, threadName);
+    
+    synchronized (threadState) {
+      threadState.event(severity, attributes, timestampNs);
     }
   }
   
@@ -436,9 +450,17 @@ public class EventUploader {
       pendingEventsReachedLimit = false;
     }
     
-    List<PerThreadState> threadsSnapshot;
+    // Build a list of thread states to include in this upload request. We include only threads which have
+    // had an event in the last hour. Ideally, we'd include exactly the threads for which there is at least
+    // one event in this upload batch, but that's a bit tricky to determine.
+    List<PerThreadState> threadsSnapshot = new ArrayList<PerThreadState>();
+    long timestampThreadhold = ScalyrUtil.nanoTime() - TuningConstants.MAX_THREAD_AGE_FOR_UPLOAD_NS;
     synchronized (threads) {
-      threadsSnapshot = new ArrayList<PerThreadState>(threads.values());
+      for (PerThreadState thread : threads.values()) {
+        if (thread.latestEventTimestamp >= timestampThreadhold) {
+          threadsSnapshot.add(thread);
+        }
+      }
     }
     
     // Sort the threads alphabetically by name -- this ensures a stable order when
@@ -461,10 +483,10 @@ public class EventUploader {
     if (ourHostname != null)
       sessionInfo.put("serverHost", ourHostname);
     // We no longer explicitly report our IP address as a session attribute, as
-    // the Scalyr Logs server adds this automatically (under the name "serverIp").
+    // the Scalyr Logs server adds this automatically (under the name "serverIP").
     // 
     // if (ourIpAddress != null)
-    //   sessionInfo.put("serverIp", ourIpAddress);
+    //   sessionInfo.put("serverIP", ourIpAddress);
     
     if (serverAttributes != null)
       for (Map.Entry<String, Object> entry : serverAttributes.values.entrySet())
@@ -490,10 +512,10 @@ public class EventUploader {
       try {
         rawResponse = logService.uploadEvents(sessionId, sessionInfo, eventsToUpload, threadInfos);
       } catch (RuntimeException ex) {
-        printFailure(ex.toString());
+        logUploadFailure(ex.toString());
         throw ex;
       } catch (Error ex) {
-        printFailure(ex.toString());
+        logUploadFailure(ex.toString());
         throw ex;
       }
       
@@ -522,7 +544,7 @@ public class EventUploader {
             pendingEventsReachedLimit = false;
           }
         } else {
-          printFailure("Server response had bad status [" + rawStatus + "]; complete text: " + parsedResponse.toString());
+          logUploadFailure("Server response had bad status [" + rawStatus + "]; complete text: " + parsedResponse.toString());
           
           Logging.log(EventUploader.this, Severity.warning, Logging.tagServerError,
               "Bad response from Scalyr Logs (status [" + status + "], message [" +
@@ -534,7 +556,7 @@ public class EventUploader {
           minUploadIntervalMs = Math.min(minUploadIntervalMs, TuningConstants.MAX_EVENT_UPLOAD_SPACING_MS);
         }
       } catch (JsonParseException ex) {
-        printFailure(ex.toString());
+        logUploadFailure(ex.toString());
         
         // This shouldn't occur, as the underlying service framework verifies that the server's
         // response is valid JSON.
@@ -558,27 +580,66 @@ public class EventUploader {
     }
   }
   
-  boolean loggedUploadSuccess = false;
+  private boolean loggedUploadSuccess = false;
 
   /**
-   * Write a note to stdout indicating that we've successfully uploaded a batch of events to
-   * the server. We do this only once (for the first successful upload). The agent.sh script
-   * uses this to see whether the relay has come up cleanly.
+   * If the most recent upload attempt failed, this holds the millisecond timestamp when the current string of
+   * consecutive failures began. Otherwise null.
+   */
+  private Long uploadFailuresStartMs = null;
+  
+  /**
+   * This method is called whenever we successfully upload a batch of events to the server.
    */
   void logUploadSuccess() {
+    uploadFailuresStartMs = null;
+    
     if (!loggedUploadSuccess) {
+      // Write a note to stdout indicating that we've successfully uploaded a batch of events to
+      // the server. We do this only once (for the first successful upload). The agent.sh script
+      // uses this to see whether the relay has come up cleanly.
       loggedUploadSuccess = true;
       System.out.println("UPLOAD SUCCESS: the first batch of events has been successfully uploaded to the Scalyr server.");
     }
   }
 
   /**
-   * Write a note to stdout indicating that we've had a failed attempt to upload a batch of events to
-   * the server. We do this only until the first successful upload. The agent.sh script uses this
-   * to see whether the relay has come up cleanly.
+   * This method is called whenever we experience a failure while attempting to upload batch of events to the server.
+   * It is called for all failure modes, from local exceptions to network problems to error codes returned from the
+   * server.
    */
-  void printFailure(String message) {
+  void logUploadFailure(String message) {
+    long nowMs = ScalyrUtil.currentTimeMillis();
+    if (uploadFailuresStartMs == null)
+      uploadFailuresStartMs = nowMs;
+    else {
+      if (_discardBatchesAfterPersistentFailures &&
+          nowMs - uploadFailuresStartMs >= TuningConstants.DISCARD_EVENT_BATCH_AFTER_PERSISTENT_FAILURE_SECONDS * 1000) {
+        int firstChunkSize;
+        
+        // We've persistently failed to upload this chunk for a long time. There may be something fundamentally
+        // wrong with it. In any event, the current server implementation is unable to accept events that are more
+        // than a few minutes old. Either way, we have nothing to gain by holding onto this data chunk. So we'll
+        // discard it, in hopes of helping the upload process to resume.
+        synchronized (uploadSynchronizer) {
+          synchronized (chunkSizes) {
+            firstChunkSize = chunkSizes.getFirst();
+            chunkSizes.removeFirst();
+          }
+          pendingEventBuffer.discardOldestBytes(firstChunkSize);
+          pendingEventsReachedLimit = false;
+        }
+
+        Logging.log(EventUploader.this, Severity.warning, Logging.tagLogBufferOverflow,
+            "Discarding an event batch of size " + firstChunkSize + " bytes, because we have been persistently unable to upload it. Latest error: ["
+            + message + "]");
+      }
+    }
+    
     if (!loggedUploadSuccess) {
+      // Write a note to stdout indicating that we've had a failed attempt to upload a batch of events to
+      // the server. We do this only until the first successful upload. The agent.sh script uses this
+      // to see whether the relay has come up cleanly.
       System.out.println("UPLOAD FAILURE: " + message);
     }
   }
@@ -637,6 +698,12 @@ public class EventUploader {
    * Should not be used by client applications (this means you!). 
    */
   public static volatile boolean _disableUploadTimer = false;
+  
+  /**
+   * If false, then we ignore TuningConstants.DISCARD_EVENT_BATCH_AFTER_PERSISTENT_FAILURE_SECONDS.
+   * Always true except during tests.
+   */
+  public static volatile boolean _discardBatchesAfterPersistentFailures = true;
   
   private synchronized void launchUploadTimer() {
     if (uploadTimer == null) {
@@ -713,6 +780,12 @@ public class EventUploader {
      */
     private int eventDiscardGeneration = -1;
     
+    /**
+     * Nanosecond timestamp of the most recent event in this thread, or 0 if there have never been any
+     * events in the thread.
+     */
+    private long latestEventTimestamp = 0;
+    
     PerThreadState(long threadId, String name) {
       this(Long.toString(threadId), name);
     }
@@ -727,6 +800,7 @@ public class EventUploader {
      */
     Span start(Severity severity, EventAttributes attributes) {
       long timestampNs = getMonotonicNanos();
+      latestEventTimestamp = timestampNs;
       
       ConvertAndAddResult result = convertAndAddToBuffer(timestampNs, LogService.SPAN_TYPE_START, severity, attributes, null,
           memoryLimit * TuningConstants.EVENT_BUFFER_RESERVED_PERCENT / 100, false);
@@ -766,6 +840,7 @@ public class EventUploader {
      */
     void end(Span span, EventAttributes attributes) {
       long timestampNs = getMonotonicNanos();
+      latestEventTimestamp = timestampNs;
       
       convertAndAddToBuffer(timestampNs, LogService.SPAN_TYPE_END, span.severity, attributes, span.startTime,
           memoryLimit * TuningConstants.EVENT_BUFFER_END_EVENT_RESERVED_PERCENT / 100, false);
@@ -794,6 +869,7 @@ public class EventUploader {
      * Add a non-span event to the buffer, with an explicitly specified timestamp.
      */
     void event(Severity severity, EventAttributes attributes, long timestampNs) {
+      latestEventTimestamp = timestampNs;
       convertAndAddToBuffer(timestampNs, LogService.SPAN_TYPE_LEAF, severity, attributes, null,
           memoryLimit * TuningConstants.EVENT_BUFFER_RESERVED_PERCENT / 100, false);
     }

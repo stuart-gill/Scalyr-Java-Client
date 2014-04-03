@@ -17,10 +17,15 @@
 
 package com.scalyr.api.logs;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.Iterator;
+import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 
 /**
  * An EventAttributes object encapsulates named attributes to be associated with an event.
@@ -238,12 +243,91 @@ public class EventAttributes {
   }
   
   @Override public String toString() {
-    return values.toString();
+    // We return our attributes in alphabetical order, for consistency in tests.
+    StringBuilder sb = new StringBuilder();
+    sb.append('{');
+    
+    List<String> keys = new ArrayList<String>(values.keySet());
+    Collections.sort(keys);
+    for (int i = 0; i < keys.size(); i++) {
+      if (i > 0)
+        sb.append(", ");
+      
+      String key = keys.get(i);
+      sb.append(key);
+      sb.append('=');
+      sb.append(values.get(key));
+    }
+    
+    sb.append('}');
+    return sb.toString();
   }
   
-  @Override public boolean equals(Object o) {
-    return (o instanceof EventAttributes) && values.equals(((EventAttributes)o).values);
+  /**
+   * We implement equals() in a manner that respects MATCH_ANY -- see MATCH_ANY for details. We also treat Integers and
+   * Longs as equivalent; this is handy in tests.
+   */
+  @Override public boolean equals(Object obj) {
+    if (obj == this)
+      return true;
+    
+    if (getClass() != obj.getClass())
+      return false;
+    
+    EventAttributes other = (EventAttributes) obj;
+    if (values.size() != other.values.size())
+      return false;
+    
+    // We compare values one at a time, rather than invoking values.equals(), to implement MATCH_ANY and other
+    // special features (see equivalentValues()).
+    for (Map.Entry<String, Object> entry : values.entrySet()) {
+      String key = entry.getKey();
+      Object value = entry.getValue();
+      Object otherValue = other.values.get(key);
+      if (value == null) {
+        if (otherValue != null || !other.values.containsKey(key)) {
+          return false;
+        }
+      } else if (otherValue == null) {
+        return false;
+      } else {
+        if (!equivalentValues(value, otherValue)) {
+          return false;
+        }
+      }
+    }
+    
+    return true;
   }
+  
+  /**
+   * Return true if the two values are equal, or "equivalent". We treat MATCH_ANY as equivalent to any
+   * non-null value, and we treat an Integer as equivalent to a Long with the same numeric value.
+   * 
+   * We assume both parameters are non-null.
+   */
+  private static boolean equivalentValues(Object a, Object b) {
+    if (a.equals(b))
+      return true;
+    
+    if (a == MATCH_ANY || b == MATCH_ANY)
+      return true;
+    
+    if (a instanceof Integer && b instanceof Long) {
+      return (int)(Integer)a == (long)(Long)b;
+    }
+    
+    if (a instanceof Long && b instanceof Integer) {
+      return (long)(Long)a == (int)(Integer)b;
+    }
+    
+    return false;
+  }
+  
+  /**
+   * Special value which EventAttributes.equals() treats as matching any non-null value. Useful in tests.
+   */
+  public static String MATCH_ANY = "__MATCH_ANY_VALUE__";
   
   @Override public int hashCode() {
     return values.hashCode();

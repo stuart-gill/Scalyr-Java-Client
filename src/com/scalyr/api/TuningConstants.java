@@ -132,6 +132,18 @@ public class TuningConstants {
   public static final int EVENT_BUFFER_END_EVENT_RESERVED_PERCENT = 1;
   
   /**
+   * When uploading a batch of log events to the Scalyr server, we include thread metadata
+   * for threads whose oldest event is no older than this. See the reference to this constant
+   * in EventUploader.
+   */
+  public static final long MAX_THREAD_AGE_FOR_UPLOAD_NS = 3600 * 1000000000L;
+  
+  /**
+   * We discard a batch of log events if we've persistently failed to upload it for this many seconds.
+   */
+  public static final long DISCARD_EVENT_BATCH_AFTER_PERSISTENT_FAILURE_SECONDS = 1200;
+  
+  /**
    * Maximum rate at which we write diagnostic messages to stdout. Can be overridden
    * by creating a ThresholdLogger with a custom SimpleRateLimiter, and passing it
    * to Logging.setHook(...).

@@ -70,20 +70,21 @@ public class SampledCounter extends Gauge {
   }
   
   /**
-   * Increment the counter value by 1.
+   * Increment the counter value by 1. Return the new value.
    */
-  public void increment() {
-    increment(1.0);
+  public double increment() {
+    return increment(1.0);
   }
   
   /**
-   * Increment the counter value by the specified delta.
+   * Increment the counter value by the specified delta. Return the new value.
    */
-  public void increment(double delta) {
+  public double increment(double delta) {
     while (true) {
-      long current = value.get();
-      if (value.compareAndSet(current, Double.doubleToLongBits(Double.longBitsToDouble(current) + delta)))
-        return;
+      long currentLong = value.get();
+      double newValue = Double.longBitsToDouble(currentLong) + delta;
+      if (value.compareAndSet(currentLong, Double.doubleToLongBits(newValue)))
+        return newValue;
     }
   }
   

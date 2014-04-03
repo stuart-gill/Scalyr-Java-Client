@@ -46,7 +46,7 @@ public class LogService extends ScalyrService {
   
   /**
    * Upload a batch of events to the Scalyr Logs service. See the
-   * <a href="https://log.scalyr.com/logHttpApi">HTTP API documentation</a> for a detailed description
+   * <a href="https://www.scalyr.com/help/api">HTTP API documentation</a> for a detailed description
    * of each parameter.
    * 
    * @param sessionId ID of this process instance.
@@ -55,7 +55,7 @@ public class LogService extends ScalyrService {
    * @param events The events to upload (a JSON array).
    * @param threadInfos Optional; contains information for the threads referenced in the events array.
    * 
-   * @return The JSON-formatted response from the server. See <a href='https://www.scalyr.com/httpApi'>scalyr.com/httpApi</a>.
+   * @return The JSON-formatted response from the server. See <a href='https://www.scalyr.com/help/api'>scalyr.com/help/api</a>.
    * 
    * @throws ScalyrException
    * @throws ScalyrNetworkException

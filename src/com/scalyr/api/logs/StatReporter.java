@@ -114,16 +114,49 @@ public class StatReporter {
     
     // Report invocation count and cumulative execution time for each garbage collector
     for (GarbageCollectorMXBean collector : ManagementFactory.getGarbageCollectorMXBeans()) {
-      final GarbageCollectorMXBean collector_ = collector;
       String tag = "jvm.collector." + collector.getName().toLowerCase().replace(' ', '_');
       
-      Gauge.register(new Gauge(){@Override public Object sample() {
-        return collector_.getCollectionCount();
-      }}, attributesWithTag(tag + ".count"));
+      Gauge.register(new GCGauge(collector, true, false), attributesWithTag(tag + ".count"));
+      Gauge.register(new GCGauge(collector, false, false), attributesWithTag(tag + ".timeMs"));
       
-      Gauge.register(new Gauge(){@Override public Object sample() {
-        return collector_.getCollectionTime();
-      }}, attributesWithTag(tag + ".timeMs"));
+      Gauge.register(new GCGauge(collector, true, true), attributesWithTag(tag + ".count_rate"));
+      Gauge.register(new GCGauge(collector, false, true), attributesWithTag(tag + ".timeMs_rate"));
+    }
+  }
+  
+  private static class GCGauge extends Gauge {
+    private final GarbageCollectorMXBean collector;
+    private boolean useCount;
+    private boolean recordDelta;
+    
+    long previousValue = 0;
+    long previousTimestamp = -1;
+    
+    public GCGauge(GarbageCollectorMXBean collector, boolean useCount, boolean recordDelta) {
+      this.collector = collector;
+      this.useCount = useCount;
+      this.recordDelta = recordDelta;
+    }
+    
+    @Override public Object sample() {
+      long value = (useCount) ? collector.getCollectionCount() : collector.getCollectionTime();
+      long timestamp = ScalyrUtil.nanoTime();
+      
+      Double result;
+      if (recordDelta) {
+        if (previousTimestamp >= 0 && previousTimestamp < timestamp && previousValue <= value) {
+          result = (double)(value - previousValue) * 1E9 / (double)(timestamp - previousTimestamp);
+        } else {
+          result = null;
+        }
+      } else {
+        result = (double) value;
+      }
+      
+      previousValue = value;
+      previousTimestamp = timestamp;
+      
+      return result;
     }
   }
   
