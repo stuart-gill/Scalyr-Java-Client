@@ -26,7 +26,7 @@ import com.scalyr.api.internal.ScalyrUtil;
 
 
 /**
- * @author FangYidong<fangyidong@yahoo.com.cn>
+ * @author FangYidong &lt;fangyidong@yahoo.com.cn&gt;
  */
 public class JSONValue {
   /**
