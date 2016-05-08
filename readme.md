@@ -10,9 +10,25 @@ like to submit a patch, feel free to get in touch (contact@scalyr.com). And of c
 feedback, requests, and suggestions are always welcome!
 
 
+### Adding to your project
 
-json-simple
----
+##### With Maven
+
+Add the following dependency to your project's pom.xml (check [Maven Central](http://search.maven.org/#search%7Cga%7C1%7Cscalyr%20scalyr-client) for the latest version):
+
+        <dependency>
+            <groupId>com.scalyr</groupId>
+            <artifactId>scalyr-client</artifactId>
+            <version>6.0.0</version>
+        </dependency>
+
+
+##### Downloading JARs directly
+
+* Download the Java client library from [Maven Central](https://oss.sonatype.org/content/groups/public/com/scalyr/scalyr-client/6.0.0/scalyr-client-6.0.0.jar) and add it to your project.
+
+
+#### Note about json-simple
 
 The com.scalyr.api.json package contains a bastardized copy of the json-simple library
 (http://code.google.com/p/json-simple/). We have removed code not needed for our
