@@ -79,22 +79,22 @@ public class StatReporter {
     
     // Report used and free space for heap and non-heap memory.
     final MemoryMXBean memoryBean = ManagementFactory.getMemoryMXBean();
-    final MemoryUsage heapUsage = memoryBean.getHeapMemoryUsage();
-    final MemoryUsage nonHeapUsage = memoryBean.getNonHeapMemoryUsage();
     
     Gauge.register(new Gauge(){@Override public Object sample() {
-      return heapUsage.getUsed();
+      return memoryBean.getHeapMemoryUsage().getUsed();
     }}, attributesWithTag("jvm.heap.used"));
     
     Gauge.register(new Gauge(){@Override public Object sample() {
+      final MemoryUsage heapUsage = memoryBean.getHeapMemoryUsage();
       return heapUsage.getMax() - heapUsage.getUsed();
     }}, attributesWithTag("jvm.heap.free"));
     
     Gauge.register(new Gauge(){@Override public Object sample() {
-      return nonHeapUsage.getUsed();
+      return memoryBean.getNonHeapMemoryUsage().getUsed();
     }}, attributesWithTag("jvm.nonHeap.used"));
     
     Gauge.register(new Gauge(){@Override public Object sample() {
+      final MemoryUsage nonHeapUsage = memoryBean.getNonHeapMemoryUsage();
       return nonHeapUsage.getMax() - nonHeapUsage.getUsed();
     }}, attributesWithTag("jvm.nonHeap.free"));
     
