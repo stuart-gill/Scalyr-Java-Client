@@ -262,7 +262,6 @@ public class Knob {
 
         if (parsedFile != null && parsedFile.containsKey(key)) {
           newValue = parsedFile.get(key);
-          //System.out.println("Found in config file, now newValue has type " + newValue.getClass());
           break;
         }
       }
@@ -283,7 +282,6 @@ public class Knob {
           updateListener.accept(this);
         }
       }
-      //System.out.println("newValue has type " + newValue.getClass());
       return newValue;
     }
   }
