@@ -389,7 +389,7 @@ public class KnobTest extends KnobTestBase {
 //    System.out.println("3 days is " + value3days.micros() + " microseconds. Should be 259200000000.");
 
     verifyExceptionMessageContains(invalidKnob1::hours, "Formatting error in your config file, in the magnitude of your time: ");
-    verifyExceptionMessageContains(invalidKnob2::hours, "Formatting error in your config file, in the units of your time: ");
+    verifyExceptionMessageContains(invalidKnob2::get, "Formatting error in your config file, in the units of your time: ");
     verifyExceptionMessageContains(invalidKnob3::hours, "Formatting error in your config file: ");
 
   }

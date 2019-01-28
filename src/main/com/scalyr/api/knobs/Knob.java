@@ -495,8 +495,20 @@ public class Knob {
     @Override public java.time.Duration getWithTimeout(java.lang.Long timeoutInMs, boolean bypassCache) throws ScalyrDeadlineException {
       Object value = super.getWithTimeout(timeoutInMs, bypassCache);
       if (value instanceof java.lang.String) { //We got entry from config file
+
         java.lang.String[] splitInput = ((java.lang.String) value).trim().split(" +");
-        return java.time.Duration.of(java.lang.Long.parseLong(splitInput[0]), convertTimeType(timeUnitMap.get(splitInput[1])));
+        try {
+          if (splitInput.length != 2) {
+            throw new RuntimeException();
+          }
+          return java.time.Duration.of(java.lang.Long.parseLong(splitInput[0]), convertTimeType(timeUnitMap.get(splitInput[1])));
+        } catch (NumberFormatException e) { //Error in magnitude format
+          throw new RuntimeException("Formatting error in your config file, in the magnitude of your time: \"" + splitInput[0] + "\"");
+        } catch (NullPointerException e) { //Error in unit format
+          throw new RuntimeException("Formatting error in your config file, in the units of your time: \"" + splitInput[1] + "\"");
+        } catch (RuntimeException e) { //Some other formatting error entirely
+          throw new RuntimeException("Formatting error in your config file: \"" + splitInput[0] + "\"");
+        }
       } else { //Using default value
         return java.time.Duration.of((long) value, ChronoUnit.NANOS);
       }
@@ -583,7 +595,6 @@ public class Knob {
         case NANOSECONDS:
           return ChronoUnit.NANOS;
         default:
-          assert false : "there are no other TimeUnit ordinal values";
           return null;
       }
     }
