@@ -505,7 +505,7 @@ public class Knob {
         } catch (NullPointerException e) { //Error in unit format
           throw new RuntimeException("Formatting error in your config file, in the units of your time: \"" + splitInput[1] + "\"");
         } catch (RuntimeException e) { //Some other formatting error entirely
-          throw new RuntimeException("Formatting error in your config file: \"" + splitInput[0] + "\"");
+          throw new RuntimeException("Formatting error in your config file: \"" + value + "\"");
         }
       } else { //Using default value
         return java.time.Duration.of((long) value, ChronoUnit.NANOS);
@@ -566,7 +566,7 @@ public class Knob {
         } catch (NullPointerException e) { //Error in unit format
           throw new RuntimeException("Formatting error in your config file, in the units of your time: \"" + splitInput[1] + "\"");
         } catch (RuntimeException e) { //Some other formatting error entirely
-          throw new RuntimeException("Formatting error in your config file: \"" + splitInput[0] + "\"");
+          throw new RuntimeException("Formatting error in your config file: \"" + value + "\"");
         }
       } else { //Using default value
         return format.convert((long) value, TimeUnit.NANOSECONDS);
