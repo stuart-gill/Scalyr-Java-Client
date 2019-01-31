@@ -26,7 +26,12 @@ import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.logs.Severity;
 
 import java.time.temporal.ChronoUnit;
-import java.util.*;
+import java.util.HashMap;
+import java.util.Set;
+import java.util.Map;
+import java.util.List;
+import java.util.HashSet;
+import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -558,7 +563,7 @@ public class Knob {
       Object value = super.getWithTimeout(timeoutInMs, bypassCache);
       if (value instanceof java.lang.String) { //We got entry from config file
         java.lang.String[] splitInput = ((java.lang.String) value).trim().split(" +");
-        assert splitInput.length == 2 : "Invalid duration format: " + value;
+        ScalyrUtil.Assert( splitInput.length == 2, "Invalid duration format: " + value);
         try {
           return format.convert(java.lang.Long.parseLong(splitInput[0]), timeUnitMap.get(splitInput[1]));
         } catch (NumberFormatException e) { //Error in magnitude format

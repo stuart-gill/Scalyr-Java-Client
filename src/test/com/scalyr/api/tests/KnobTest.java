@@ -410,12 +410,7 @@ public class KnobTest extends KnobTestBase {
     //Exception testing
       verifyExceptionMessageContains(invalidKnob1::hours, "Invalid time magnitude: ");
       verifyExceptionMessageContains(invalidKnob2::get, "Invalid time unit: ");
-
-      try {
-        invalidKnob3.hours();
-      } catch (AssertionError e) {
-        assertTrue(e.toString().contains("Invalid duration format:"));
-      }
+      verifyExceptionMessageContains(invalidKnob3::hours, "Invalid duration format: ");
 
   }
 
