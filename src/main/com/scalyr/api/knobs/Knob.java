@@ -469,6 +469,24 @@ public class Knob {
 
   /**
   * Subclass of Knob for durations, to make writing them nicer (eg. "2 minutes" or "1 day").
+   *
+   * CONFIG FILES:
+   *  In the config file, define value in the format "[DURATION] [UNIT]", eg. "2 minutes" or "450 ms".
+   *  Acceptable units: {s, sec, sec, second, seconds, ms, milli, millis, milliseconds,
+   *      micros, microseconds, ns, nano, nanos, nanoseconds, m, min, mins, minute, minutes, h, hour, hours, d, day, days}
+   *
+   *  If your config file doesn't have the label, knob will return default value.
+   *
+   * METHODS TO GET VALUE:
+   *  You can get value in any time unit: .nanos(), .micros(), .millis(), .seconds(), .minutes(), .hours(), .days()
+   *  Alternatively, you can use .get() on your Duration knob, which returns a java.time.Duration and then use any methods
+   *     owned by java.time.Duration, such as .toNanos().
+   *
+   * EXAMPLE USAGE:
+   *  //Assume that config file has {myLabel: "1 day"}
+   *  Knob.Duration myKnob = new Knob.Duration("myLabel", 1L, TimeUnit.SECONDS, paramFile);
+   *  long hoursInADay = myKnob.hours(); //Will be 24 hours
+   *
   */
   public static class Duration extends Knob {
 
@@ -490,26 +508,10 @@ public class Knob {
       return this.getWithTimeout(timeoutInMs, false);
     }
 
-    @Override public java.time.Duration getWithTimeout(java.lang.Long timeoutInMs, boolean bypassCache) throws ScalyrDeadlineException {
-      Object value = super.getWithTimeout(timeoutInMs, bypassCache);
-      if (value instanceof java.lang.String) { //We got entry from config file
-
-        java.lang.String[] splitInput = ((java.lang.String) value).trim().split(" +");
-        try {
-          if (splitInput.length != 2) {
-            throw new RuntimeException();
-          }
-          return java.time.Duration.of(java.lang.Long.parseLong(splitInput[0]), convertTimeType(timeUnitMap.get(splitInput[1])));
-        } catch (NumberFormatException e) { //Error in magnitude format
-          throw new RuntimeException("Formatting error in your config file, in the magnitude of your time: \"" + splitInput[0] + "\"");
-        } catch (NullPointerException e) { //Error in unit format
-          throw new RuntimeException("Formatting error in your config file, in the units of your time: \"" + splitInput[1] + "\"");
-        } catch (RuntimeException e) { //Some other formatting error entirely
-          throw new RuntimeException("Formatting error in your config file: \"" + value + "\"");
-        }
-      } else { //Using default value
-        return java.time.Duration.of((long) value, ChronoUnit.NANOS);
-      }
+    @Override public java.time.Duration getWithTimeout(java.lang.Long timeoutInMs, boolean bypassCache)
+            throws ScalyrDeadlineException {
+      return java.time.Duration.of(getTimeInFormat(TimeUnit.NANOSECONDS,
+              timeoutInMs, bypassCache), ChronoUnit.NANOS);
     }
 
     @Override public Duration expireHint(java.lang.String dateStr) {
@@ -521,79 +523,51 @@ public class Knob {
      */
 
     public java.lang.Long seconds() {
-      return getTimeInFormat(TimeUnit.SECONDS);
+      return getTimeInFormat(TimeUnit.SECONDS, null, false);
     }
 
     public java.lang.Long millis() {
-      return getTimeInFormat(TimeUnit.MILLISECONDS);
+      return getTimeInFormat(TimeUnit.MILLISECONDS, null, false);
     }
 
     public java.lang.Long micros() {
-      return getTimeInFormat(TimeUnit.MICROSECONDS);
+      return getTimeInFormat(TimeUnit.MICROSECONDS, null, false);
     }
 
     public java.lang.Long nanos() {
-      return getTimeInFormat(TimeUnit.NANOSECONDS);
+      return getTimeInFormat(TimeUnit.NANOSECONDS, null, false);
     }
 
     public java.lang.Long minutes() {
-      return getTimeInFormat(TimeUnit.MINUTES);
+      return getTimeInFormat(TimeUnit.MINUTES, null, false);
     }
 
     public java.lang.Long hours() {
-      return getTimeInFormat(TimeUnit.HOURS);
+      return getTimeInFormat(TimeUnit.HOURS, null, false);
     }
 
     public java.lang.Long days() {
-      return getTimeInFormat(TimeUnit.DAYS);
+      return getTimeInFormat(TimeUnit.DAYS, null, false);
     }
 
     /*
      * HELPER STUFF
      */
 
-    private java.lang.Long getTimeInFormat(TimeUnit format) {
-      Object value = super.getWithTimeout(null, false);
+    private java.lang.Long getTimeInFormat(TimeUnit format, java.lang.Long timeoutInMs, boolean bypassCache) {
+      Object value = super.getWithTimeout(timeoutInMs, bypassCache);
       if (value instanceof java.lang.String) { //We got entry from config file
         java.lang.String[] splitInput = ((java.lang.String) value).trim().split(" +");
+        assert splitInput.length == 2 : "Invalid duration format: " + value;
         try {
-          if (splitInput.length != 2) {
-            throw new RuntimeException();
-          }
           return format.convert(java.lang.Long.parseLong(splitInput[0]), timeUnitMap.get(splitInput[1]));
         } catch (NumberFormatException e) { //Error in magnitude format
-          throw new RuntimeException("Formatting error in your config file, in the magnitude of your time: \"" + splitInput[0] + "\"");
+          throw new RuntimeException("Invalid time magnitude: \"" + splitInput[0] + "\"");
         } catch (NullPointerException e) { //Error in unit format
-          throw new RuntimeException("Formatting error in your config file, in the units of your time: \"" + splitInput[1] + "\"");
-        } catch (RuntimeException e) { //Some other formatting error entirely
-          throw new RuntimeException("Formatting error in your config file: \"" + value + "\"");
+          throw new RuntimeException("Invalid time unit: \"" + splitInput[1] + "\"");
         }
       } else { //Using default value
         return format.convert((long) value, TimeUnit.NANOSECONDS);
-      }
-    }
-
-    private static ChronoUnit convertTimeType(TimeUnit tu) {
-      if (tu == null) {
-        return null;
-      }
-      switch (tu) {
-        case DAYS:
-          return ChronoUnit.DAYS;
-        case HOURS:
-          return ChronoUnit.HOURS;
-        case MINUTES:
-          return ChronoUnit.MINUTES;
-        case SECONDS:
-          return ChronoUnit.SECONDS;
-        case MICROSECONDS:
-          return ChronoUnit.MICROS;
-        case MILLISECONDS:
-          return ChronoUnit.MILLIS;
-        case NANOSECONDS:
-          return ChronoUnit.NANOS;
-        default:
-          return null;
       }
     }
 
@@ -604,6 +578,7 @@ public class Knob {
       put("second"       , TimeUnit.SECONDS      ) ;
       put("seconds"      , TimeUnit.SECONDS      ) ;
       put("ms"           , TimeUnit.MILLISECONDS ) ;
+      put("milli"       , TimeUnit.MILLISECONDS ) ;
       put("millis"       , TimeUnit.MILLISECONDS ) ;
       put("milliseconds" , TimeUnit.MILLISECONDS ) ;
       put("micros"       , TimeUnit.MICROSECONDS ) ;
@@ -613,6 +588,7 @@ public class Knob {
       put("\u00B5"       , TimeUnit.MICROSECONDS ) ; // µ, or very similar-looking
       put("\u00B5s"      , TimeUnit.MICROSECONDS ) ;
       put("ns"           , TimeUnit.NANOSECONDS  ) ;
+      put("nano"        , TimeUnit.NANOSECONDS  ) ;
       put("nanos"        , TimeUnit.NANOSECONDS  ) ;
       put("nanoseconds"  , TimeUnit.NANOSECONDS  ) ;
       put("m"            , TimeUnit.MINUTES      ) ;

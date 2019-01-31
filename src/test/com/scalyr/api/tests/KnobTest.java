@@ -360,37 +360,62 @@ public class KnobTest extends KnobTestBase {
 
   @Test public void testDurationKnob() {
 
-    expectRequest(
-            "getFile",
-            "{'token': 'dummyToken', 'path': '/foo.txt'}",
-            "{'status': 'success', 'path': '/foo.txt', 'version': 1, 'createDate': 1000, 'modDate': 2000," +
-                    "'content': '{\\'time1\\': \\' 2     mins\\', \\'time2\\': \\'415 nanos\\', \\'invalidTime1\\': \\'3d2 secs\\'," +
-                    "\\'invalidTime2\\': \\'32 seuycs\\', \\'invalidTime3\\': \\'3d2secs\\'}'}");
+    //Needed objects
+      expectRequest(
+              "getFile",
+              "{'token': 'dummyToken', 'path': '/foo.txt'}",
+              "{'status': 'success', 'path': '/foo.txt', 'version': 1, 'createDate': 1000, 'modDate': 2000," +
+                      "'content': '{\\'time1\\': \\' 2     mins\\', \\'time2\\': \\'415 nanos\\', \\'invalidTime1\\': \\'3d2 secs\\'," +
+                      "\\'invalidTime2\\': \\'32 seuycs\\', \\'invalidTime3\\': \\'3d2secs\\'}'}");
 
-    ConfigurationFile paramFile = factory.getFile("/foo.txt");
+      ConfigurationFile paramFile = factory.getFile("/foo.txt");
 
-    Knob.Duration value2min = new Knob.Duration("time1", 1L, TimeUnit.SECONDS, paramFile);
-    Knob.Duration value415nanos = new Knob.Duration("time2", 1L, TimeUnit.SECONDS, paramFile);
-    Knob.Duration value3days = new Knob.Duration("time3", 3L, TimeUnit.DAYS, paramFile);
-    Knob.Duration invalidKnob1 = new Knob.Duration("invalidTime1", 3L, TimeUnit.DAYS, paramFile);
-    Knob.Duration invalidKnob2 = new Knob.Duration("invalidTime2", 3L, TimeUnit.DAYS, paramFile);
-    Knob.Duration invalidKnob3 = new Knob.Duration("invalidTime3", 3L, TimeUnit.DAYS, paramFile);
+      Knob.Duration value2min = new Knob.Duration("time1", 1L, TimeUnit.SECONDS, paramFile);
+      Knob.Duration value415nanos = new Knob.Duration("time2", 1L, TimeUnit.SECONDS, paramFile);
+      Knob.Duration value3days = new Knob.Duration("time3", 3L, TimeUnit.DAYS, paramFile);
+      Knob.Duration invalidKnob1 = new Knob.Duration("invalidTime1", 3L, TimeUnit.DAYS, paramFile);
+      Knob.Duration invalidKnob2 = new Knob.Duration("invalidTime2", 3L, TimeUnit.DAYS, paramFile);
+      Knob.Duration invalidKnob3 = new Knob.Duration("invalidTime3", 3L, TimeUnit.DAYS, paramFile);
+      Knob.Duration unconfiguredKnob = new Knob.Duration("nonexistent label", 1L, TimeUnit.DAYS, paramFile);
 
-    assertEquals((Long) 120000L, value2min.millis());
-//    System.out.println("2 minutes is " + value2min.millis() + " milliseconds. Should be 120000.");
-    assertEquals((Long) 120L, value2min.seconds());
-//    System.out.println("2 minutes is " + value2min.seconds() + " seconds. Should be 120.");
-    assertEquals(120000000000L, value2min.get().toNanos());
-//    System.out.println("2 minutes is " + value2min.nanos() + " nanoseconds. Should be 120000000000.");
-    //assertEquals(0.000415, (Object) value415nanos.millis());
-    assertEquals(415L, value415nanos.get().toNanos());
-//    System.out.println("415 nanoseconds is " + value415nanos.get().toNanos() + " nanoseconds. Should be 415.");
-    assertEquals(259200000000L, (long) value3days.micros());
-//    System.out.println("3 days is " + value3days.micros() + " microseconds. Should be 259200000000.");
+    //Random tests on 2min knob
+      assertEquals((Long) 120000L, value2min.millis());
+      assertEquals((Long) 120L, value2min.seconds());
+      assertEquals(120000000000L, value2min.get().toNanos());
 
-    verifyExceptionMessageContains(invalidKnob1::hours, "Formatting error in your config file, in the magnitude of your time: ");
-    verifyExceptionMessageContains(invalidKnob2::get, "Formatting error in your config file, in the units of your time: ");
-    verifyExceptionMessageContains(invalidKnob3::hours, "Formatting error in your config file: ");
+    //Random tests on 415ns knob
+      assertEquals(415L, value415nanos.get().toNanos());
+
+    //ALL possible tests on 3day knob
+      //Special DurationKnob methods
+        assertEquals(259200000000L, (long) value3days.micros());
+        assertEquals(259200L, (long) value3days.seconds());
+        assertEquals(259200000000000L, (long) value3days.nanos());
+        assertEquals(259200000L, (long) value3days.millis());
+        assertEquals(4320L, (long) value3days.minutes());
+        assertEquals(72L, (long) value3days.hours());
+        assertEquals(3L, (long) value3days.days());
+
+      //java.time.Duration methods to use with get() on Duration knobs
+        assertEquals(259200000000000L, value3days.get().toNanos());
+        assertEquals(259200000L, value3days.get().toMillis());
+        assertEquals(4320L, value3days.get().toMinutes());
+        assertEquals(72L, value3days.get().toHours());
+        assertEquals(3L, value3days.get().toDays());
+
+    //Testing default value on knob with no config
+        assertEquals(24L, (long) unconfiguredKnob.hours());
+        assertEquals(1L, unconfiguredKnob.get().toDays());
+
+    //Exception testing
+      verifyExceptionMessageContains(invalidKnob1::hours, "Invalid time magnitude: ");
+      verifyExceptionMessageContains(invalidKnob2::get, "Invalid time unit: ");
+
+      try {
+        invalidKnob3.hours();
+      } catch (AssertionError e) {
+        assertTrue(e.toString().contains("Invalid duration format:"));
+      }
 
   }
 

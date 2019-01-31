@@ -1,5 +1,6 @@
 .idea
 scalyr-client.iml
+Scalyr-Java-Client.iml
 .metadata
 bin
 .classpath
