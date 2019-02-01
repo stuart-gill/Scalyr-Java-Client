@@ -250,9 +250,7 @@ public class Converter {
     return new Object[]{java.lang.Long.parseLong(magnitude), timeUnitMap.get(units)};
   }
 
-  private static boolean isNum(char c) {
-    return c >= '0' && c <= '9';
-  }
+  private static boolean isNum(char c) { return c >= '0' && c <= '9'; }
 
   private static final Map<java.lang.String, TimeUnit> timeUnitMap = new HashMap<java.lang.String, TimeUnit>(){{
     put("ns"           , TimeUnit.NANOSECONDS  ) ;
