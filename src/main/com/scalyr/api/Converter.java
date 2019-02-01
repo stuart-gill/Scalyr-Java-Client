@@ -17,6 +17,12 @@
 
 package com.scalyr.api;
 
+import com.scalyr.api.internal.ScalyrUtil;
+
+import java.util.concurrent.TimeUnit;
+import java.util.Map;
+import java.util.HashMap;
+
 /**
  * Utilities for converting data from one type to another.
  *
@@ -182,4 +188,109 @@ public class Converter {
     }
     throw new RuntimeException(exceptionMessage);
   }
+
+  /**
+   * Parses a config string for a Duration Knob and returns its value in Nanoseconds.
+   * See DurationKnob javadocs for usage/rules.
+   */
+  public static Long parseDurationFromString(Object inputObj) {
+    String input = inputObj.toString();
+    Object[] parsed = parseNumAndUnits(input);
+
+    return TimeUnit.NANOSECONDS.convert((Long) parsed[0], (TimeUnit) parsed[1]);
+  }
+
+  /**
+   * Helper method for parseDurationFromString()
+   * @param input: takes the input String
+   * @return an Object[] containing [Long, java.TimeUnit] parsed from the String
+   */
+  private static Object[] parseNumAndUnits(String input) {
+
+    input = input.trim(); //Eliminate leading/trailing spaces
+
+    /*
+     * State 0 = we're on number part
+     * State 1 = units part
+     */
+    short state = 0;
+    char c;
+    String magnitude = "";
+    String units = "";
+    String exceptionMessage = "Invalid duration format: \"" + input + "\"";
+
+    charLoop:
+    for (int i = 0; i < input.length(); i++) {
+      c = input.charAt(i);
+      switch (state) {
+        case 0: //Trying to parse number
+          if (isNum(c)) {
+            magnitude += c;
+          } else if (magnitude.equals("")) { //If we've hit a non-# character before getting any numbers
+            throw new RuntimeException(exceptionMessage);
+          } else {
+            i--; //So we don't skip over this first non-# character
+            state = 1; //Moving onto units
+          }
+          break;
+
+        case 1: //Trying to parse units
+          if (c != ' ') { //If we hit a space, we do nothing this iteration
+            String secondHalf = input.substring(i).toLowerCase();
+            if (timeUnitMap.containsKey(secondHalf)) { //If it's a valid unit format
+              units = secondHalf;
+              break charLoop;
+            } else {
+              throw new RuntimeException(exceptionMessage);
+            }
+          }
+      }
+    }
+
+    return new Object[]{java.lang.Long.parseLong(magnitude), timeUnitMap.get(units)};
+  }
+
+  private static boolean isNum(char c) {
+    return c >= '0' && c <= '9';
+  }
+
+  private static final Map<java.lang.String, TimeUnit> timeUnitMap = new HashMap<java.lang.String, TimeUnit>(){{
+    put("ns"           , TimeUnit.NANOSECONDS  ) ;
+    put("nano"         , TimeUnit.NANOSECONDS  ) ;
+    put("nanos"        , TimeUnit.NANOSECONDS  ) ;
+    put("nanosecond"   , TimeUnit.NANOSECONDS  ) ;
+    put("nanoseconds"  , TimeUnit.NANOSECONDS  ) ;
+    put("micro"        , TimeUnit.MICROSECONDS ) ;
+    put("micros"       , TimeUnit.MICROSECONDS ) ;
+    put("microsecond"  , TimeUnit.MICROSECONDS ) ;
+    put("microseconds" , TimeUnit.MICROSECONDS ) ;
+    put("\u03BC"       , TimeUnit.MICROSECONDS ) ; // µ, or very similar-looking
+    put("\u03BCs"      , TimeUnit.MICROSECONDS ) ;
+    put("\u00B5"       , TimeUnit.MICROSECONDS ) ; // µ, or very similar-looking
+    put("\u00B5s"      , TimeUnit.MICROSECONDS ) ;
+    put("ms"           , TimeUnit.MILLISECONDS ) ;
+    put("milli"        , TimeUnit.MILLISECONDS ) ;
+    put("millis"       , TimeUnit.MILLISECONDS ) ;
+    put("millisecond"  , TimeUnit.MILLISECONDS ) ;
+    put("milliseconds" , TimeUnit.MILLISECONDS ) ;
+    put("s"            , TimeUnit.SECONDS      ) ;
+    put("sec"          , TimeUnit.SECONDS      ) ;
+    put("secs"         , TimeUnit.SECONDS      ) ;
+    put("second"       , TimeUnit.SECONDS      ) ;
+    put("seconds"      , TimeUnit.SECONDS      ) ;
+    put("m"            , TimeUnit.MINUTES      ) ;
+    put("min"          , TimeUnit.MINUTES      ) ;
+    put("mins"         , TimeUnit.MINUTES      ) ;
+    put("minute"       , TimeUnit.MINUTES      ) ;
+    put("minutes"      , TimeUnit.MINUTES      ) ;
+    put("h"            , TimeUnit.HOURS        ) ;
+    put("hr"           , TimeUnit.HOURS        ) ;
+    put("hrs"          , TimeUnit.HOURS        ) ;
+    put("hour"         , TimeUnit.HOURS        ) ;
+    put("hours"        , TimeUnit.HOURS        ) ;
+    put("d"            , TimeUnit.DAYS         ) ;
+    put("day"          , TimeUnit.DAYS         ) ;
+    put("days"         , TimeUnit.DAYS         ) ;
+  }};
+
 }
