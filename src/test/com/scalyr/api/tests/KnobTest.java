@@ -42,6 +42,7 @@ import com.scalyr.api.Converter;
 
 import static org.junit.Assert.*;
 
+
 /**
  * Tests for Knob.
  */
@@ -405,7 +406,7 @@ public class KnobTest extends KnobTestBase {
       put("  2DAYS"               , 172800000000000L);
     }};
 
-    positiveTests.forEach((k,v) -> assertEquals(Converter.parseDurationFromString(k), v));
+    positiveTests.forEach((k,v) -> assertEquals(Converter.parseNanosFromString(k), (long) v));
 
     HashSet<String> negativeTests = new HashSet<String>(){{
       add("134nanoos");
@@ -418,7 +419,7 @@ public class KnobTest extends KnobTestBase {
     negativeTests.forEach(k -> {
       boolean exceptionThrown = false;
       try {
-        Converter.parseDurationFromString(k);
+        Converter.parseNanosFromString(k);
       } catch (RuntimeException e) {
         exceptionThrown = true;
       }
@@ -426,6 +427,7 @@ public class KnobTest extends KnobTestBase {
         fail("Expected an exception for invalid format, but none thrown.");
       }
     });
+
 
     //--------------------------------------------------------------------------------
     // Part 2: Testing functionality of knobs made from a config file
@@ -445,21 +447,21 @@ public class KnobTest extends KnobTestBase {
 
     Knob.Duration value2min = new Knob.Duration("time1", 1L, TimeUnit.SECONDS, paramFile);
 
-    assertEquals((Long) 120000L, value2min.millis());
-    assertEquals((Long) 120L, value2min.seconds());
+    assertEquals(120000L, value2min.millis());
+    assertEquals(120L, value2min.seconds());
     assertEquals(120000000000L, value2min.get().toNanos());
 
     //ALL possible tests on 3day knob
 
     Knob.Duration value3days = new Knob.Duration("time3", 3L, TimeUnit.DAYS, paramFile);
 
-    assertEquals(259200000000L, (long) value3days.micros());
-    assertEquals(259200L, (long) value3days.seconds());
-    assertEquals(259200000000000L, (long) value3days.nanos());
-    assertEquals(259200000L, (long) value3days.millis());
-    assertEquals(4320L, (long) value3days.minutes());
-    assertEquals(72L, (long) value3days.hours());
-    assertEquals(3L, (long) value3days.days());
+    assertEquals(259200000000L, value3days.micros());
+    assertEquals(259200L, value3days.seconds());
+    assertEquals(259200000000000L, value3days.nanos());
+    assertEquals(259200000L, value3days.millis());
+    assertEquals(4320L, value3days.minutes());
+    assertEquals(72L, value3days.hours());
+    assertEquals(3L, value3days.days());
     assertEquals(259200000000000L, value3days.get().toNanos());
     assertEquals(259200000L, value3days.get().toMillis());
     assertEquals(4320L, value3days.get().toMinutes());
@@ -469,7 +471,7 @@ public class KnobTest extends KnobTestBase {
     //Testing default value on knob with no config
 
     Knob.Duration unconfiguredKnob = new Knob.Duration("nonexistent label", 1L, TimeUnit.DAYS, paramFile);
-    assertEquals(24L, (long) unconfiguredKnob.hours());
+    assertEquals(24L, unconfiguredKnob.hours());
     assertEquals(1L, unconfiguredKnob.get().toDays());
 
     //Exception testing

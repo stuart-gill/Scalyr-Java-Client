@@ -193,21 +193,8 @@ public class Converter {
    * Parses a config string for a Duration Knob and returns its value in Nanoseconds.
    * See DurationKnob javadocs for usage/rules.
    */
-  public static Long parseDurationFromString(Object inputObj) {
-    String input = inputObj.toString();
-    Object[] parsed = parseNumAndUnits(input);
-
-    return TimeUnit.NANOSECONDS.convert((Long) parsed[0], (TimeUnit) parsed[1]);
-  }
-
-  /**
-   * Helper method for parseDurationFromString()
-   * @param input: takes the input String
-   * @return an Object[] containing [Long, java.TimeUnit] parsed from the String
-   */
-  private static Object[] parseNumAndUnits(String input) {
-
-    input = input.trim(); //Eliminate leading/trailing spaces
+  public static long parseNanosFromString(Object inputObj) {
+    String input = inputObj.toString().trim(); // Eliminate leading/trailing spaces
 
     /*
      * State 0 = we're on number part
@@ -215,6 +202,7 @@ public class Converter {
      */
     short state = 0;
     char c;
+    boolean seenNumber = false;
     String magnitude = "";
     String units = "";
     String exceptionMessage = "Invalid duration format: \"" + input + "\"";
@@ -223,21 +211,22 @@ public class Converter {
     for (int i = 0; i < input.length(); i++) {
       c = input.charAt(i);
       switch (state) {
-        case 0: //Trying to parse number
+        case 0: // Trying to parse number
           if (isNum(c)) {
-            magnitude += c;
-          } else if (magnitude.equals("")) { //If we've hit a non-# character before getting any numbers
+            seenNumber = true;
+          } else if (!seenNumber) { // If we've hit a non-# character before getting any numbers
             throw new RuntimeException(exceptionMessage);
           } else {
-            i--; //So we don't skip over this first non-# character
-            state = 1; //Moving onto units
+            magnitude = input.substring(0, i);
+            i--; // So we don't skip over this first non-# character
+            state = 1; // Moving onto units
           }
           break;
 
-        case 1: //Trying to parse units
-          if (c != ' ') { //If we hit a space, we do nothing this iteration
+        case 1: // Trying to parse units
+          if (c != ' ') { // If we hit a space, we do nothing this iteration
             String secondHalf = input.substring(i).toLowerCase();
-            if (timeUnitMap.containsKey(secondHalf)) { //If it's a valid unit format
+            if (timeUnitMap.containsKey(secondHalf)) { // If it's a valid unit format
               units = secondHalf;
               break charLoop;
             } else {
@@ -247,7 +236,7 @@ public class Converter {
       }
     }
 
-    return new Object[]{java.lang.Long.parseLong(magnitude), timeUnitMap.get(units)};
+    return TimeUnit.NANOSECONDS.convert(java.lang.Long.parseLong(magnitude), timeUnitMap.get(units));
   }
 
   private static boolean isNum(char c) { return c >= '0' && c <= '9'; }
