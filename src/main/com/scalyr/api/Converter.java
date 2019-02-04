@@ -17,8 +17,6 @@
 
 package com.scalyr.api;
 
-import com.scalyr.api.internal.ScalyrUtil;
-
 import java.util.concurrent.TimeUnit;
 import java.util.Map;
 import java.util.HashMap;
@@ -191,7 +189,7 @@ public class Converter {
 
   /**
    * Parses a config string for a Duration Knob and returns its value in Nanoseconds.
-   * See DurationKnob javadocs for usage/rules.
+   * See {@link com.scalyr.api.knobs.Knob.Duration} DurationKnob javadocs for usage/rules.
    */
   public static long parseNanosFromString(Object inputObj) {
     String input = inputObj.toString().trim(); // Eliminate leading/trailing spaces
@@ -205,14 +203,14 @@ public class Converter {
     boolean seenNumber = false;
     String magnitude = "";
     String units = "";
-    String exceptionMessage = "Invalid duration format: \"" + input + "\"";
+    final String exceptionMessage = "Invalid duration format: \"" + input + "\"";
 
     charLoop:
     for (int i = 0; i < input.length(); i++) {
       c = input.charAt(i);
       switch (state) {
         case 0: // Trying to parse number
-          if (isNum(c)) {
+          if (Character.isDigit(c)) {
             seenNumber = true;
           } else if (!seenNumber) { // If we've hit a non-# character before getting any numbers
             throw new RuntimeException(exceptionMessage);
@@ -224,10 +222,9 @@ public class Converter {
           break;
 
         case 1: // Trying to parse units
-          if (c != ' ') { // If we hit a space, we do nothing this iteration
-            String secondHalf = input.substring(i).toLowerCase();
-            if (timeUnitMap.containsKey(secondHalf)) { // If it's a valid unit format
-              units = secondHalf;
+          if (!Character.isWhitespace(c)) { // If we hit a space, we do nothing this iteration
+            units = input.substring(i).toLowerCase();
+            if (timeUnitMap.containsKey(units)) { // If it's a valid unit format
               break charLoop;
             } else {
               throw new RuntimeException(exceptionMessage);
@@ -238,8 +235,6 @@ public class Converter {
 
     return TimeUnit.NANOSECONDS.convert(java.lang.Long.parseLong(magnitude), timeUnitMap.get(units));
   }
-
-  private static boolean isNum(char c) { return c >= '0' && c <= '9'; }
 
   private static final Map<java.lang.String, TimeUnit> timeUnitMap = new HashMap<java.lang.String, TimeUnit>(){{
     put("ns"           , TimeUnit.NANOSECONDS  ) ;

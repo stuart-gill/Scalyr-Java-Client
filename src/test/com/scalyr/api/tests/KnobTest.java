@@ -484,8 +484,5 @@ public class KnobTest extends KnobTestBase {
 
     Knob.Duration invalidKnob3 = new Knob.Duration("invalidTime3", 3L, TimeUnit.DAYS, paramFile);
     verifyExceptionMessageContains(invalidKnob3::hours, "Invalid duration format: ");
-
   }
-
-
 }

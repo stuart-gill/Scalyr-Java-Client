@@ -563,8 +563,5 @@ public class Knob {
         return (long) value;
       }
     }
-
   }
-
-
 }
