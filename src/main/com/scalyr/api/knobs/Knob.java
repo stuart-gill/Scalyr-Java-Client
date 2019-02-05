@@ -25,10 +25,12 @@ import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.logs.Severity;
 
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
+import java.time.temporal.ChronoUnit;
 import java.util.Set;
+import java.util.List;
+import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -466,6 +468,102 @@ public class Knob {
 
     @Override public String expireHint(java.lang.String dateStr) {
       return this;
+    }
+  }
+
+  /**
+   * Subclass of Knob for durations, to make writing them nicer (eg. "2 minutes" or "1 DAY").
+   *
+   * CONFIG FILES:
+   *
+   *  In the config file, define value in the format "[DURATION] [UNIT]", eg. "2 minutes" or "4ns" or "450 millis".
+   *
+   *  Acceptable units:
+   *    ns, nano, nanos, nanosecond, nanoseconds
+   *    micro, micros, microsecond, microseconds, µ, µs
+   *    ms, milli, millis, millisecond, milliseconds
+   *    s, sec, secs, second, seconds
+   *    m, min, mins, minute, minutes
+   *    h, hr, hrs, hour, hours
+   *    d, day, days
+   *
+   *   - Durations are case insensitive.
+   *   - Spaces are okay when leading, trailing, or in between the amount and the units.
+   *
+   * METHODS TO GET VALUE:
+   *
+   *  We provide long-valued accessors that return commonly used units:
+   *    .nanos(), .micros(), .millis(), .seconds(), .minutes(), .hours(), .days()
+   *
+   *  The standard Knob.get() method is also overridden to return a java.time.Duration object,
+   *  which can be used with its native methods such as .toNanos() to get a Long value.
+   *
+   * EXAMPLE USAGE:
+   *
+   *  // Assume that config file has {myLabel: "1day"}
+   *  Knob.Duration myKnob = new Knob.Duration("myLabel", 1L, TimeUnit.SECONDS, paramFile);
+   *  long hoursInADay = myKnob.hours(); //Will be 24 hours
+   *
+   */
+  public static class Duration extends Knob {
+
+    public Duration(java.lang.String valueKey, java.lang.Long defaultValue, TimeUnit defaultTimeUnit, ConfigurationFile ... files) {
+      // We always store default value in Nanoseconds
+      super(valueKey, TimeUnit.NANOSECONDS.convert(defaultValue, defaultTimeUnit), files);
+    }
+
+    //--------------------------------------------------------------------------------
+    // Overrides
+    //--------------------------------------------------------------------------------
+
+    // Since with get() we can't specify a unit for time, we return a java.time.Duration
+    @Override public java.time.Duration get() {
+      return this.getWithTimeout(null, false);
+    }
+
+    @Override public java.time.Duration getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
+      return this.getWithTimeout(timeoutInMs, false);
+    }
+
+    @Override public java.time.Duration getWithTimeout(java.lang.Long timeoutInMs, boolean bypassCache) throws ScalyrDeadlineException {
+      return java.time.Duration.of(getTimeInNanos(timeoutInMs, bypassCache), ChronoUnit.NANOS);
+    }
+
+    @Override public Duration expireHint(java.lang.String dateStr) {
+      return this;
+    }
+
+    //--------------------------------------------------------------------------------
+    // New Methods
+    //--------------------------------------------------------------------------------
+
+    public long nanos()   { return getTimeInNanos(null, false); }
+
+    public long micros()  { return TimeUnit.MICROSECONDS.convert(getTimeInNanos(null, false), TimeUnit.NANOSECONDS); }
+
+    public long millis()  { return TimeUnit.MILLISECONDS.convert(getTimeInNanos(null, false), TimeUnit.NANOSECONDS); }
+
+    public long seconds() { return TimeUnit.SECONDS.convert(getTimeInNanos(null, false),      TimeUnit.NANOSECONDS); }
+
+    public long minutes() { return TimeUnit.MINUTES.convert(getTimeInNanos(null, false),      TimeUnit.NANOSECONDS); }
+
+    public long hours()   { return TimeUnit.HOURS.convert(getTimeInNanos(null, false),        TimeUnit.NANOSECONDS); }
+
+    public long days()    { return TimeUnit.DAYS.convert(getTimeInNanos(null, false),         TimeUnit.NANOSECONDS); }
+
+    //--------------------------------------------------------------------------------
+    // Helper Methods
+    //--------------------------------------------------------------------------------
+
+    private long getTimeInNanos(java.lang.Long timeoutInMs, boolean bypassCache) {
+      Object value = super.getWithTimeout(timeoutInMs, bypassCache);
+      if (value instanceof java.lang.Long || value instanceof java.lang.Integer) { // Using default value
+        return (long) value;
+      } else if (value instanceof java.lang.String) { // We got entry from config file
+        return Converter.parseNanos((java.lang.String) value);
+      } else {
+        throw new IllegalArgumentException("Got non-string, non-integral value: " + value);
+      }
     }
   }
 }
