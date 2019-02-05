@@ -406,7 +406,7 @@ public class KnobTest extends KnobTestBase {
       put("  2DAYS"               , 172800000000000L);
     }};
 
-    positiveTests.forEach((k,v) -> assertEquals(Converter.parseNanosFromString(k), (long) v));
+    positiveTests.forEach((k,v) -> assertEquals(Converter.parseNanos(k), (long) v));
 
     HashSet<String> negativeTests = new HashSet<String>(){{
       add("134nanoos");
@@ -419,7 +419,7 @@ public class KnobTest extends KnobTestBase {
     negativeTests.forEach(k -> {
       boolean exceptionThrown = false;
       try {
-        Converter.parseNanosFromString(k);
+        Converter.parseNanos(k);
       } catch (RuntimeException e) {
         exceptionThrown = true;
       }

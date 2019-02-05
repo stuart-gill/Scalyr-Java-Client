@@ -191,8 +191,8 @@ public class Converter {
    * Parses a config string for a Duration Knob and returns its value in Nanoseconds.
    * See {@link com.scalyr.api.knobs.Knob.Duration} DurationKnob javadocs for usage/rules.
    */
-  public static long parseNanosFromString(Object inputObj) {
-    String input = inputObj.toString().trim(); // Eliminate leading/trailing spaces
+  public static long parseNanos(String input) {
+    input = input.trim(); // Eliminate leading/trailing spaces
 
     /*
      * State 0 = we're on number part

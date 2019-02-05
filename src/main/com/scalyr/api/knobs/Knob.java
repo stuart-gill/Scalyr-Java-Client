@@ -557,10 +557,12 @@ public class Knob {
 
     private long getTimeInNanos(java.lang.Long timeoutInMs, boolean bypassCache) {
       Object value = super.getWithTimeout(timeoutInMs, bypassCache);
-      if (value instanceof java.lang.String) { // We got entry from config file
-        return Converter.parseNanosFromString(value);
-      } else { // Using default value
+      if (value instanceof java.lang.Long || value instanceof java.lang.Integer) { // Using default value
         return (long) value;
+      } else if (value instanceof java.lang.String) { // We got entry from config file
+        return Converter.parseNanos((java.lang.String) value);
+      } else {
+        throw new IllegalArgumentException("Got non-string, non-integral value: " + value);
       }
     }
   }
