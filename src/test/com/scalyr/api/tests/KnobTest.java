@@ -26,7 +26,6 @@ import com.scalyr.api.knobs.ConfigurationFileFactory;
 import com.scalyr.api.knobs.Knob;
 import com.scalyr.api.knobs.LocalConfigurationFile;
 import com.scalyr.api.logs.Severity;
-import com.sun.tools.javac.util.Convert;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
