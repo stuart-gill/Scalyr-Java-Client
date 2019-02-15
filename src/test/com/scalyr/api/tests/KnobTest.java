@@ -26,6 +26,7 @@ import com.scalyr.api.knobs.ConfigurationFileFactory;
 import com.scalyr.api.knobs.Knob;
 import com.scalyr.api.knobs.LocalConfigurationFile;
 import com.scalyr.api.logs.Severity;
+import com.sun.tools.javac.util.Convert;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -345,6 +346,13 @@ public class KnobTest extends KnobTestBase {
     } catch (Exception e) {
       assertTrue(e.getMessage().contains(message));
     }
+  }
+
+  @Test public void testConverterWithoutBytes() {
+    assertEquals(2000000L, (long) Converter.parseNumberWithSI("2M"));
+    assertEquals(-2000000000L, (long) Converter.parseNumberWithSI("-2G"));
+    assertEquals(5000L, (long) Converter.parseNumberWithSI("5K"));
+    assertEquals(-1000000000000000L, (long) Converter.parseNumberWithSI("-1p"));
   }
 
   /**

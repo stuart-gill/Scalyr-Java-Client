@@ -370,7 +370,7 @@ public class Knob {
       return this;
     }
 
-    private java.lang.Integer convertWithSI(Object obj) {
+    protected java.lang.Integer convertWithSI(Object obj) {
       try {
         return Converter.toInteger(obj);
       } catch (RuntimeException ex) {

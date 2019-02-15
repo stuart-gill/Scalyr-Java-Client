@@ -124,15 +124,18 @@ public class Converter {
    *  0   1    2     3       4   5   6   7     0
    */
   public static Long parseNumberWithSI(Object valueWithSIObj) {
-    String valueWithSI = toString(valueWithSIObj);
+    String valueWithSI = toString(valueWithSIObj).trim().toUpperCase();
     long numberPart = 0;
     char multiplier = '\0';
     boolean withI = false;
+    boolean negative = false;
     short state = 0;
     java.lang.String exceptionMessage = "Can't convert [" + valueWithSI + "]";
     for (int i = 0; i < valueWithSI.length(); i++) {
       char c = valueWithSI.charAt(i);
-      if (c >= '0' && c <= '9') {
+      if (i == 0 && c == '-') {
+        negative = true;
+      } else if (c >= '0' && c <= '9') {
         switch (state) {
           case 0:
           case 1:
@@ -145,17 +148,18 @@ public class Converter {
           case 1: state = 1; break;
           case 2:
           case 3: state = 3; break;
+          case 4: state = 7; break;
           case 6:
-          case 7: state = 7; break;
+          case 7: break;
           default: throw new RuntimeException(exceptionMessage);
         }
-      } else if (c == 'K' || c == 'M' || c == 'G' || c == 'T') {
+      } else if (c == 'K' || c == 'M' || c == 'G' || c == 'T' || c == 'P') {
         switch (state) {
           case 2:
           case 3: state = 4; multiplier = c; break;
           default: throw new RuntimeException(exceptionMessage);
         }
-      } else if (c == 'i') {
+      } else if (c == 'I') {
         switch (state) {
           case 4: state = 5; withI = true; break;
           default: throw new RuntimeException(exceptionMessage);
@@ -172,9 +176,12 @@ public class Converter {
         throw new RuntimeException(exceptionMessage);
       }
     }
+    if (negative) {
+      numberPart *= -1;
+    }
     if (state == 2 || state == 3) {
       return numberPart;
-    } else if (state == 6 || state == 7) {
+    } else if (state == 6 || state == 7 || state == 4) {
       long base = withI ? 1024 : 1000;
       switch (multiplier) {
         case '\0': return numberPart;
@@ -182,6 +189,7 @@ public class Converter {
         case 'M': return numberPart * base * base;
         case 'G': return numberPart * base * base * base;
         case 'T': return numberPart * base * base * base * base;
+        case 'P': return numberPart * base * base * base * base * base;
       }
     }
     throw new RuntimeException(exceptionMessage);
