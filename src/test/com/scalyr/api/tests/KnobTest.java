@@ -347,6 +347,13 @@ public class KnobTest extends KnobTestBase {
     }
   }
 
+  @Test public void testConverterWithoutBytes() {
+    assertEquals(2000000L, (long) Converter.parseNumberWithSI("2M"));
+    assertEquals(-2000000000L, (long) Converter.parseNumberWithSI("-2G"));
+    assertEquals(5000L, (long) Converter.parseNumberWithSI("5K"));
+    assertEquals(-1000000000000000L, (long) Converter.parseNumberWithSI("-1p"));
+  }
+
   /**
    * Listener implementation used in tests.
    */
