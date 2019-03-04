@@ -274,16 +274,26 @@ public class QueryTest extends LogsTestBase {
       + "  'startTime': '1d',"
       + "  'endTime': null,"
       + "  'buckets': 1"
+      + "  },"
+      + "  {"
+      + "  'filter': 'testFilter',"
+      + "  'function': 'testFunction',"
+      + "  'startTime': '4h',"
+      + "  'endTime': '2h',"
+      + "  'buckets': 10"
       + "  }"
       + "]}",
         "{'status': 'success',"
-      + "'executionTime': 15,"
+      + "'executionTime': 27,"
       + "'results': ["
       + "  { 'executionTime': 9, 'values': [1, 2.0, -3.5] },"
-      + "  { 'executionTime': 6, 'values': [1234567] }"
+      + "  { 'executionTime': 6, 'values': [1234567] },"
+      + "  { 'executionTime': 12, 'values': [1,4,8,5,3,-10,4,8,3,1] }"
       + "]"
       + "}"
         );
+
+    // Queries 1 and 2 use old process, with timeseriesID, assuming use of createTimeseries()
 
     TimeseriesQuerySpec query1 = new TimeseriesQuerySpec();
     query1.timeseriesId = "t1";
@@ -295,11 +305,21 @@ public class QueryTest extends LogsTestBase {
     query2.timeseriesId = "t2";
     query2.startTime = "1d";
 
-    TimeseriesQueryResult queryResult = queryService.timeseriesQuery(new TimeseriesQuerySpec[]{query1, query2});
+    // Query 3 uses new process, passing in filter and function to the TimeseriesQuerySpec
+
+    TimeseriesQuerySpec query3 = new TimeseriesQuerySpec();
+    query3.startTime = "4h";
+    query3.endTime = "2h";
+    query3.buckets = 10;
+    query3.filter = "testFilter";
+    query3.function = "testFunction";
+
+    TimeseriesQueryResult queryResult = queryService.timeseriesQuery(new TimeseriesQuerySpec[]{query1, query2, query3});
     assertEquals(
-        "{TimeseriesQueryResult: 2 values, execution time 15.0 ms, values ["
+        "{TimeseriesQueryResult: 3 values, execution time 27.0 ms, values ["
       + "{NumericQueryResult: 3 values, execution time 9.0 ms, values [1.0, 2.0, -3.5]}, "
-      + "{NumericQueryResult: 1 value, execution time 6.0 ms, values [1234567.0]}]}",
+      + "{NumericQueryResult: 1 value, execution time 6.0 ms, values [1234567.0]}, "
+      + "{NumericQueryResult: 10 values, execution time 12.0 ms, values [1.0, 4.0, 8.0, 5.0, 3.0, -10.0, 4.0, 8.0, 3.0, 1.0]}]}",
         queryResult.toString());
   }
 

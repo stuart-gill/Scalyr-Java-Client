@@ -327,10 +327,15 @@ public class QueryService extends ScalyrService {
 
     for (TimeseriesQuerySpec query : queries) {
       JSONObject queryJson = new JSONObject();
-      queryJson.put("timeseriesId", query.timeseriesId);
+      if (query.timeseriesId != null) { // Existence of a timeseriesID takes precedence, although it will be deprecated eventually.
+        queryJson.put("timeseriesId", query.timeseriesId);
+      } else { // If using new API (no timeseriesID), use filter and function.
+        if (query.filter   != null) { queryJson.put("filter", query.filter);     }
+        if (query.function != null) { queryJson.put("function", query.function); }
+      }
       queryJson.put("startTime", query.startTime);
-      queryJson.put("endTime", query.endTime);
-      queryJson.put("buckets", query.buckets);
+      queryJson.put("endTime"  , query.endTime  );
+      queryJson.put("buckets"  , query.buckets  );
 
       queriesJson.add(queryJson);
     }
@@ -346,9 +351,13 @@ public class QueryService extends ScalyrService {
    */
   public static class TimeseriesQuerySpec {
     /**
+     * DEPRECATED:
+     *  Use of the timeseriesID and its creator method, createTimeSeries(), will eventually be unsupported.
+     *  Instead of using timeseriesID, set the 'filter' and 'function' values for the TimeseriesQuerySpec instance.
+     *
      * ID of the timeseries to query, as returned by a previously call to createTimeseries.
      */
-    public String timeseriesId;
+    public String timeseriesId = null;
 
     /**
      * The time range to query, using the same syntax as the query UI. You can also supply a simple timestamp,
@@ -356,6 +365,17 @@ public class QueryService extends ScalyrService {
      * the current time.
      */
     public String startTime, endTime;
+
+    /**
+     * Specifies which log records to match, using the same syntax as the Expression field in the
+     * query UI. To match all log records, pass null or an empty string.
+     */
+    public String filter = null;
+
+    /**
+     * Specifies the value to compute from the matching events. Has the same meaning as for the numericQuery method.
+     */
+    public String function = null;
 
     /**
      * The number of numeric values to return. The time range is divided into this many equal slices.
@@ -386,6 +406,8 @@ public class QueryService extends ScalyrService {
   }
 
   /**
+   * DEPRECATED! timeSeriesIDs and createTimeseries() will eventually be unsupported.
+   *
    * This method is used to create a timeseries. A timeseries precomputes a numeric query, allowing you to
    * execute queries almost instantaneously. This is useful for queries that you execute repeatedly. If you
    * are using the Scalyr API to feed a home-built dashboard, alerting system, or other automated tool,
@@ -402,6 +424,7 @@ public class QueryService extends ScalyrService {
    * @throws ScalyrException if a low-level error occurs (e.g. network failure)
    * @throws ScalyrServerException if the Scalyr service returns an error
    */
+  @java.lang.Deprecated
   public CreateTimeseriesResult createTimeseries(String filter, String function)
       throws ScalyrException, ScalyrNetworkException {
     JSONObject parameters = new JSONObject();
@@ -420,9 +443,12 @@ public class QueryService extends ScalyrService {
   }
 
   /**
+   * DEPRECATED! timeSeriesIDs and createTimeseries() will eventually be unsupported.
+   *
    * Given the raw server response to a createTimeseries request, encapsulate the result in a
    * CreateTimeseriesResult. The caller should verify that the request was successful (returned status "success").
    */
+  @java.lang.Deprecated
   private CreateTimeseriesResult unpackCreateTimeseriesResult(JSONObject rawApiResponse) {
     String timeseriesId = rawApiResponse.get("timeseriesId").toString();
 
