@@ -79,7 +79,7 @@ public class QueryService extends ScalyrService {
    * @throws ScalyrServerException if the Scalyr service returns an error
    */
   public LogQueryResult logQuery(String filter, String startTime, String endTime, Integer maxCount,
-      PageMode pageMode, String columns, String continuationToken)
+                                 PageMode pageMode, String columns, String continuationToken)
       throws ScalyrException, ScalyrNetworkException {
     JSONObject parameters = new JSONObject();
     parameters.put("token", apiToken);
@@ -191,7 +191,7 @@ public class QueryService extends ScalyrService {
    * @throws ScalyrServerException if the Scalyr service returns an error
    */
   public NumericQueryResult numericQuery(String filter, String function, String startTime,
-      String endTime, Integer buckets)
+                                         String endTime, Integer buckets)
       throws ScalyrException, ScalyrNetworkException {
     JSONObject parameters = new JSONObject();
     parameters.put("token", apiToken);
@@ -334,8 +334,8 @@ public class QueryService extends ScalyrService {
         if (query.function != null) { queryJson.put("function", query.function); }
       }
       queryJson.put("startTime", query.startTime);
-      queryJson.put("endTime"  , query.endTime  );
-      queryJson.put("buckets"  , query.buckets  );
+      queryJson.put("endTime", query.endTime);
+      queryJson.put("buckets", query.buckets);
 
       queriesJson.add(queryJson);
     }
@@ -350,14 +350,8 @@ public class QueryService extends ScalyrService {
    * Parameters for a single timeseries query.
    */
   public static class TimeseriesQuerySpec {
-    /**
-     * DEPRECATED:
-     *  Use of the timeseriesID and its creator method, createTimeSeries(), will eventually be unsupported.
-     *  Instead of using timeseriesID, set the 'filter' and 'function' values for the TimeseriesQuerySpec instance.
-     *
-     * ID of the timeseries to query, as returned by a previously call to createTimeseries.
-     */
-    public String timeseriesId = null;
+    /** This field is deprecated. Use 'filter' and 'function' instead. */
+    @Deprecated public String timeseriesId;
 
     /**
      * The time range to query, using the same syntax as the query UI. You can also supply a simple timestamp,
@@ -370,12 +364,12 @@ public class QueryService extends ScalyrService {
      * Specifies which log records to match, using the same syntax as the Expression field in the
      * query UI. To match all log records, pass null or an empty string.
      */
-    public String filter = null;
+    public String filter;
 
     /**
      * Specifies the value to compute from the matching events. Has the same meaning as for the numericQuery method.
      */
-    public String function = null;
+    public String function;
 
     /**
      * The number of numeric values to return. The time range is divided into this many equal slices.
@@ -406,26 +400,9 @@ public class QueryService extends ScalyrService {
   }
 
   /**
-   * DEPRECATED! timeSeriesIDs and createTimeseries() will eventually be unsupported.
-   *
-   * This method is used to create a timeseries. A timeseries precomputes a numeric query, allowing you to
-   * execute queries almost instantaneously. This is useful for queries that you execute repeatedly. If you
-   * are using the Scalyr API to feed a home-built dashboard, alerting system, or other automated tool,
-   * timeseries are for you.
-   *
-   * It may take up to half an hour for a timeseries to be fully created. During that time, you can query
-   * the timeseries, but queries may not execute as quickly. Recent data is accelerated before older data.
-   *
-   * @param filter Specifies which log records to match, using the same syntax as the Expression field in the
-   *     query UI. To match all log records, pass null or an empty string.
-   * @param function Specifies the value to compute from the matching events. Has the same meaning as for the
-   *     numericQuery method.
-   *
-   * @throws ScalyrException if a low-level error occurs (e.g. network failure)
-   * @throws ScalyrServerException if the Scalyr service returns an error
+   * Deprecated. See git history for javadoc.
    */
-  @java.lang.Deprecated
-  public CreateTimeseriesResult createTimeseries(String filter, String function)
+  @Deprecated public CreateTimeseriesResult createTimeseries(String filter, String function)
       throws ScalyrException, ScalyrNetworkException {
     JSONObject parameters = new JSONObject();
     parameters.put("token", apiToken);
@@ -443,12 +420,8 @@ public class QueryService extends ScalyrService {
   }
 
   /**
-   * DEPRECATED! timeSeriesIDs and createTimeseries() will eventually be unsupported.
-   *
-   * Given the raw server response to a createTimeseries request, encapsulate the result in a
-   * CreateTimeseriesResult. The caller should verify that the request was successful (returned status "success").
+   * Deprecated helper method for createTimeSeries().
    */
-  @java.lang.Deprecated
   private CreateTimeseriesResult unpackCreateTimeseriesResult(JSONObject rawApiResponse) {
     String timeseriesId = rawApiResponse.get("timeseriesId").toString();
 
@@ -596,7 +569,7 @@ public class QueryService extends ScalyrService {
     public final EventAttributes fields;
 
     LogQueryMatch(long timestamp, String message, Severity severity, String sessionId, EventAttributes sessionFields,
-        String threadId, EventAttributes fields) {
+                  String threadId, EventAttributes fields) {
       this.timestamp = timestamp;
       this.message = message;
       this.severity = severity;
