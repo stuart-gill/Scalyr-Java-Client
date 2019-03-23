@@ -492,4 +492,15 @@ public class KnobTest extends KnobTestBase {
     Knob.Duration invalidKnob3 = new Knob.Duration("invalidTime3", 3L, TimeUnit.DAYS, paramFile);
     verifyExceptionMessageContains(invalidKnob3::hours, "Invalid duration format: ");
   }
+
+  @Test public void testGetLongGetIntWithSI() {
+    expectRequest(
+            "getFile",
+            "{'token': 'dummyToken', 'path': '/foo.txt'}",
+            "{'status': 'success', 'path': '/foo.txt', 'version': 1, 'createDate': 1000, 'modDate': 2000," +
+                    "'content': '{\\'test\\': \\' 256K\\'}'}");
+    ConfigurationFile paramFile = factory.getFile("/foo.txt");
+    assertEquals((int) Knob.getInteger("test", 1, paramFile), 256000);
+    assertEquals((long) Knob.getLong("test", 1L, paramFile), 256000L);
+  }
 }
