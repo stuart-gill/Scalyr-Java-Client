@@ -164,12 +164,6 @@ public class Knob {
    * Like {@link #get(java.lang.String, Object, ConfigurationFile[])}, but converts the value to an Integer.
    */
   public static java.lang.Integer getInteger(java.lang.String valueKey, java.lang.Integer defaultValue, ConfigurationFile ... files) {
-//    Object val = get(valueKey, defaultValue, files);
-//    try {
-//      return Converter.toInteger(val);
-//    } catch (RuntimeException ex) {
-//      return Converter.parseNumberWithSI(val).intValue();
-//    }
     return (new Knob.Integer(valueKey, defaultValue, files).get());
   }
 
@@ -177,12 +171,6 @@ public class Knob {
    * Like {@link #get(java.lang.String, Object, ConfigurationFile[])}, but converts the value to an Long.
    */
   public static java.lang.Long getLong(java.lang.String valueKey, java.lang.Long defaultValue, ConfigurationFile ... files) {
-//    Object val = get(valueKey, defaultValue, files);
-//    try {
-//      return Converter.toLong(val);
-//    } catch (RuntimeException ex) {
-//      return Converter.parseNumberWithSI(val);
-//    }
     return (new Knob.Long(valueKey, defaultValue, files).get());
   }
 
