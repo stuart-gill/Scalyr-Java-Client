@@ -164,14 +164,14 @@ public class Knob {
    * Like {@link #get(java.lang.String, Object, ConfigurationFile[])}, but converts the value to an Integer.
    */
   public static java.lang.Integer getInteger(java.lang.String valueKey, java.lang.Integer defaultValue, ConfigurationFile ... files) {
-    return Converter.toInteger(get(valueKey, defaultValue, files));
+    return (new Knob.Integer(valueKey, defaultValue, files).get());
   }
 
   /**
    * Like {@link #get(java.lang.String, Object, ConfigurationFile[])}, but converts the value to an Long.
    */
   public static java.lang.Long getLong(java.lang.String valueKey, java.lang.Long defaultValue, ConfigurationFile ... files) {
-    return Converter.toLong(get(valueKey, defaultValue, files));
+    return (new Knob.Long(valueKey, defaultValue, files).get());
   }
 
   /**
@@ -358,9 +358,7 @@ public class Knob {
       super(valueKey, defaultValue, files);
     }
 
-    @Override public java.lang.Integer get() {
-      return convertWithSI(super.get());
-    }
+    @Override public java.lang.Integer get() { return convertWithSI(super.get()); }
 
     @Override public java.lang.Integer getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
       return convertWithSI(super.getWithTimeout(timeoutInMs));
