@@ -358,7 +358,9 @@ public class Knob {
       super(valueKey, defaultValue, files);
     }
 
-    @Override public java.lang.Integer get() { return convertWithSI(super.get()); }
+    @Override public java.lang.Integer get() {
+      return convertWithSI(super.get());
+    }
 
     @Override public java.lang.Integer getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
       return convertWithSI(super.getWithTimeout(timeoutInMs));
@@ -474,9 +476,9 @@ public class Knob {
    *
    * CONFIG FILES:
    *
-   *  In the config file, define value in the format "[DURATION] [UNIT]", eg. "2 minutes" or "4ns" or "450 millis".
-   *
-   *  Acceptable units:
+   *  - In the config file, define value in the format "[DURATION] [UNIT]", eg. "2 minutes" or "4ns" or "450 millis".
+   *  - CONVENTION: {ns, micros, ms, sec, min, hr, day(s)}
+   *  - All acceptable units:
    *    ns, nano, nanos, nanosecond, nanoseconds
    *    micro, micros, microsecond, microseconds, µ, µs
    *    ms, milli, millis, millisecond, milliseconds
@@ -484,17 +486,15 @@ public class Knob {
    *    m, min, mins, minute, minutes
    *    h, hr, hrs, hour, hours
    *    d, day, days
-   *
-   *   - Durations are case insensitive.
-   *   - Spaces are okay when leading, trailing, or in between the amount and the units.
+   *  - Durations are case insensitive, but convention is lowercase, to help disambiguate vs SI units on Integer/Long/Size.
+   *  - Spaces are okay when leading, trailing, or in between the amount and the units.
    *
    * METHODS TO GET VALUE:
    *
-   *  We provide long-valued accessors that return commonly used units:
+   *  - We provide long-valued accessors that return commonly used units:
    *    .nanos(), .micros(), .millis(), .seconds(), .minutes(), .hours(), .days()
-   *
-   *  The standard Knob.get() method is also overridden to return a java.time.Duration object,
-   *  which can be used with its native methods such as .toNanos() to get a Long value.
+   *  - The standard Knob.get() method is also overridden to return a java.time.Duration object,
+   *    which can be used with its native methods such as .toNanos() to get a Long value.
    *
    * EXAMPLE USAGE:
    *
@@ -561,6 +561,71 @@ public class Knob {
         return Converter.parseNanos((java.lang.String) value);
       } else {
         throw new IllegalArgumentException("Got non-string, non-integral value: " + value);
+      }
+    }
+  }
+
+  /**
+   * Subclass of Knob which is specialized for byte-denominated sizes (RAM, disk, etc), with or without SI.
+   *
+   * CONFIG FILES:
+   *
+   *  - In the config file, define value in the format "[MAGNITUDE] [UNIT]", eg. "2 MiB" or "4ns" or "450 KB".
+   *  - Acceptable units: (Case insensitive, but for convention please format as shown.)
+   *    [no unit == B], B, KB, KiB, MB, MiB, GB, GiB, TB, TiB, PB, PiB
+   *  - Config values must be whole numbers (no decimals)
+   *
+   * METHODS TO GET VALUE:
+   *
+   *  - We provide double-valued accessors as follows:
+   *    .getB(), .getKB(), .getKiB(), .getMB(), .getMiB(), .getGB(), .getGiB(), getTB(), getTiB(), getPB(), getPiB()
+   *  - The standard Knob.get() method will return the size in bytes, as a long.
+   *
+   * EXAMPLE USAGE:
+   *
+   *  // Assume that config file has {myLabel: "1MiB"}
+   *  Knob.Size myKnob = new Knob.Size("myLabel", 1L, paramFile);
+   *  double valueAsKilobytes = myKnob.getKB();
+   */
+  public static class Size extends Knob {
+    public Size(java.lang.String valueKey, java.lang.Long defaultValue, ConfigurationFile ... files) {
+      super(valueKey, defaultValue, files);
+    }
+
+    @Override public java.lang.Long get() {
+      return convertWithSI(super.get());
+    }
+
+    @Override public java.lang.Long getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
+      return convertWithSI(super.getWithTimeout(timeoutInMs));
+    }
+
+    @Override public Size expireHint(java.lang.String dateStr) {
+      return this;
+    }
+
+    //-----------------------------------------------------------------------------------------------
+    // New Get Methods. Plain get() will return in bytes.
+    // Returns are doubles (for cases such as calling getKB() on '500B', which will yield a decimal).
+    //-----------------------------------------------------------------------------------------------
+
+    public double getB()   { return this.get().doubleValue();        } // Byte
+    public double getKB()  { return this.getB() / 1000D;             } // Kilobyte
+    public double getKiB() { return this.getB() / 1024D;             } // Kibibyte
+    public double getMB()  { return this.getB() / Math.pow(10, 6);   } // Megabyte
+    public double getMiB() { return this.getB() / Math.pow(2, 20);   } // Mebibyte
+    public double getGB()  { return this.getB() / Math.pow(10, 9);   } // Gigabyte
+    public double getGiB() { return this.getB() / Math.pow(2, 30);   } // Gibibyte
+    public double getTB()  { return this.getB() / Math.pow(10, 12);  } // Terabyte
+    public double getTiB() { return this.getB() / Math.pow(2, 40);   } // Tebibyte
+    public double getPB()  { return this.getB() / Math.pow(10, 15);  } // Petabyte
+    public double getPiB() { return this.getB() / Math.pow(2, 50);   } // Pebibyte
+
+    private java.lang.Long convertWithSI(Object obj) {
+      try {
+        return Converter.toLong(obj);
+      } catch (RuntimeException ex) {
+        return Converter.parseNumberWithSI(obj);
       }
     }
   }
