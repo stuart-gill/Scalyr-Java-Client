@@ -28,12 +28,12 @@ import java.util.HashMap;
  */
 public class Converter {
   /**
-   * Convert any numeric type to Integer.
+   * Convert any numeric type to Integer. If `parseSI` is set to true, try to parse SI units as well.
    * <p>
    * A null input is returned as-is. Non-numeric inputs trigger an exception. Out-of-range
    * values trigger undefined behavior.
    */
-  public static Integer toInteger(Object value) {
+  public static Integer toInteger(Object value, boolean parseSI) {
     if (value instanceof Integer)
       return (Integer)value;
     else if (value instanceof Long)
@@ -42,8 +42,43 @@ public class Converter {
       return (int)(double)(Double)value;
     else if (value == null)
       return null;
+
+    if (parseSI)
+      return Converter.parseNumberWithSI(value).intValue();
     else
       throw new RuntimeException("Can't convert [" + value + "] to Integer");
+  }
+
+  /**
+   * Convert any numeric type to Integer.
+   * <p>
+   * A null input is returned as-is. Non-numeric inputs trigger an exception. Out-of-range
+   * values trigger undefined behavior.
+   */
+  public static Integer toInteger(Object value) {
+    return toInteger(value, false);
+  }
+
+  /**
+   * Convert any numeric type to Long. If `parseSI` is set to true, try to parse SI units as well.
+   * <p>
+   * A null input is returned as-is. Non-numeric inputs trigger an exception. Out-of-range
+   * values trigger undefined behavior.
+   */
+  public static Long toLong(Object value, boolean parseSI) {
+    if (value instanceof Integer)
+      return (long)(int)(Integer)value;
+    else if (value instanceof Long)
+      return (Long)value;
+    else if (value instanceof Double)
+      return (long)(double)(Double)value;
+    else if (value == null)
+      return null;
+
+    if (parseSI)
+      return Converter.parseNumberWithSI(value);
+    else
+      throw new RuntimeException("Can't convert [" + value + "] to Long");
   }
 
   /**
@@ -53,18 +88,8 @@ public class Converter {
    * values trigger undefined behavior.
    */
   public static Long toLong(Object value) {
-    if (value instanceof Integer)
-      return (long)(int)(Integer)value;
-    else if (value instanceof Long)
-      return (Long)value;
-    else if (value instanceof Double)
-      return (long)(double)(Double)value;
-    else if (value == null)
-      return null;
-    else
-      throw new RuntimeException("Can't convert [" + value + "] to Long");
+    return toLong(value, false);
   }
-
   /**
    * Convert any numeric type to Double.
    * <p>
@@ -124,7 +149,8 @@ public class Converter {
    *  0   1    2     3       4   5   6   7     0
    */
   public static Long parseNumberWithSI(Object valueWithSIObj) {
-    String valueWithSI = toString(valueWithSIObj).trim().toUpperCase();
+    assert valueWithSIObj != null;
+    String valueWithSI = valueWithSIObj.toString();
     long numberPart = 0;
     char multiplier = '\0';
     boolean withI = false;
@@ -153,24 +179,30 @@ public class Converter {
           case 7: break;
           default: throw new RuntimeException(exceptionMessage);
         }
-      } else if (c == 'K' || c == 'M' || c == 'G' || c == 'T' || c == 'P') {
-        switch (state) {
-          case 2:
-          case 3: state = 4; multiplier = c; break;
-          default: throw new RuntimeException(exceptionMessage);
-        }
-      } else if (c == 'I') {
-        switch (state) {
-          case 4: state = 5; withI = true; break;
-          default: throw new RuntimeException(exceptionMessage);
-        }
-      } else if (c == 'B') {
-        switch (state) {
-          case 2:
-          case 3:
-          case 4:
-          case 5: state = 6; break;
-          default: throw new RuntimeException(exceptionMessage);
+      } else if (c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z') {
+        c = c > 'Z' ? (char)(c + 'A' - 'a') : c;
+
+        if  (c == 'K' || c == 'M' || c == 'G' || c == 'T' || c == 'P') {
+          switch (state) {
+            case 2:
+            case 3: state = 4; multiplier = c; break;
+            default: throw new RuntimeException(exceptionMessage);
+          }
+        } else if (c == 'I') {
+          switch (state) {
+            case 4: state = 5; withI = true; break;
+            default: throw new RuntimeException(exceptionMessage);
+          }
+        } else if (c == 'B') {
+          switch (state) {
+            case 2:
+            case 3:
+            case 4:
+            case 5: state = 6; break;
+            default: throw new RuntimeException(exceptionMessage);
+          }
+        } else {
+          throw new RuntimeException(exceptionMessage);
         }
       } else {
         throw new RuntimeException(exceptionMessage);
