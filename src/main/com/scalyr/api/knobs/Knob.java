@@ -359,23 +359,15 @@ public class Knob {
     }
 
     @Override public java.lang.Integer get() {
-      return convertWithSI(super.get());
+      return Converter.toInteger(super.get(), true);
     }
 
     @Override public java.lang.Integer getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-      return convertWithSI(super.getWithTimeout(timeoutInMs));
+      return Converter.toInteger(super.getWithTimeout(timeoutInMs), true);
     }
 
     @Override public Integer expireHint(java.lang.String dateStr) {
       return this;
-    }
-
-    protected java.lang.Integer convertWithSI(Object obj) {
-      try {
-        return Converter.toInteger(obj);
-      } catch (RuntimeException ex) {
-        return Converter.parseNumberWithSI(obj).intValue();
-      }
     }
   }
 
@@ -388,23 +380,15 @@ public class Knob {
     }
 
     @Override public java.lang.Long get() {
-      return convertWithSI(super.get());
+      return Converter.toLong(super.get(), true);
     }
 
     @Override public java.lang.Long getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-      return convertWithSI(super.getWithTimeout(timeoutInMs));
+      return Converter.toLong(super.getWithTimeout(timeoutInMs), true);
     }
 
     @Override public Long expireHint(java.lang.String dateStr) {
       return this;
-    }
-
-    private java.lang.Long convertWithSI(Object obj) {
-      try {
-        return Converter.toLong(obj);
-      } catch (RuntimeException ex) {
-        return Converter.parseNumberWithSI(obj);
-      }
     }
   }
 
@@ -593,11 +577,11 @@ public class Knob {
     }
 
     @Override public java.lang.Long get() {
-      return convertWithSI(super.get());
+      return Converter.toLong(super.get(), true);
     }
 
     @Override public java.lang.Long getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-      return convertWithSI(super.getWithTimeout(timeoutInMs));
+      return Converter.toLong(super.getWithTimeout(timeoutInMs), true);
     }
 
     @Override public Size expireHint(java.lang.String dateStr) {
@@ -620,13 +604,5 @@ public class Knob {
     public double getTiB() { return this.getB() / Math.pow(2, 40);   } // Tebibyte
     public double getPB()  { return this.getB() / Math.pow(10, 15);  } // Petabyte
     public double getPiB() { return this.getB() / Math.pow(2, 50);   } // Pebibyte
-
-    private java.lang.Long convertWithSI(Object obj) {
-      try {
-        return Converter.toLong(obj);
-      } catch (RuntimeException ex) {
-        return Converter.parseNumberWithSI(obj);
-      }
-    }
   }
 }
