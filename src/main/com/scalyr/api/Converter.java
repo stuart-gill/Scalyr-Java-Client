@@ -17,6 +17,8 @@
 
 package com.scalyr.api;
 
+import com.scalyr.api.internal.ScalyrUtil;
+
 import java.util.concurrent.TimeUnit;
 import java.util.Map;
 import java.util.HashMap;
@@ -149,14 +151,13 @@ public class Converter {
    *  0   1    2     3       4   5   6   7     0
    */
   public static Long parseNumberWithSI(Object valueWithSIObj) {
-    assert valueWithSIObj != null;
+    ScalyrUtil.Assert(valueWithSIObj != null, "null parameter passed into parseNumberWithSI!");
     String valueWithSI = valueWithSIObj.toString();
     long numberPart = 0;
     char multiplier = '\0';
     boolean withI = false;
     boolean negative = false;
     short state = 0;
-    java.lang.String exceptionMessage = "Can't convert [" + valueWithSI + "]";
     for (int i = 0; i < valueWithSI.length(); i++) {
       char c = valueWithSI.charAt(i);
       if (i == 0 && c == '-') {
@@ -166,7 +167,7 @@ public class Converter {
           case 0:
           case 1:
           case 2: state = 2; numberPart *= 10; numberPart += c - '0'; break;
-          default: throw new RuntimeException(exceptionMessage);
+          default: throw getSIParseException(valueWithSI);
         }
       } else if (c == ' ') {
         switch (state) {
@@ -177,7 +178,7 @@ public class Converter {
           case 4: state = 7; break;
           case 6:
           case 7: break;
-          default: throw new RuntimeException(exceptionMessage);
+          default: throw getSIParseException(valueWithSI);
         }
       } else if (c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z') {
         c = c > 'Z' ? (char)(c + 'A' - 'a') : c;
@@ -186,12 +187,12 @@ public class Converter {
           switch (state) {
             case 2:
             case 3: state = 4; multiplier = c; break;
-            default: throw new RuntimeException(exceptionMessage);
+            default: throw getSIParseException(valueWithSI);
           }
         } else if (c == 'I') {
           switch (state) {
             case 4: state = 5; withI = true; break;
-            default: throw new RuntimeException(exceptionMessage);
+            default: throw getSIParseException(valueWithSI);
           }
         } else if (c == 'B') {
           switch (state) {
@@ -199,13 +200,13 @@ public class Converter {
             case 3:
             case 4:
             case 5: state = 6; break;
-            default: throw new RuntimeException(exceptionMessage);
+            default: throw getSIParseException(valueWithSI);
           }
         } else {
-          throw new RuntimeException(exceptionMessage);
+          throw getSIParseException(valueWithSI);
         }
       } else {
-        throw new RuntimeException(exceptionMessage);
+        throw getSIParseException(valueWithSI);
       }
     }
     if (negative) {
@@ -224,7 +225,11 @@ public class Converter {
         case 'P': return numberPart * base * base * base * base * base;
       }
     }
-    throw new RuntimeException(exceptionMessage);
+    throw getSIParseException(valueWithSI);
+  }
+
+  private static RuntimeException getSIParseException(String valueWithSI) {
+    return new RuntimeException("Can't convert [" + valueWithSI + "]");
   }
 
   /**
