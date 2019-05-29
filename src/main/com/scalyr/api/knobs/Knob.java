@@ -24,6 +24,7 @@ import com.scalyr.api.internal.Logging;
 import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.logs.Severity;
+import com.sun.istack.internal.Nullable;
 
 import java.time.temporal.ChronoUnit;
 import java.util.Set;
@@ -33,6 +34,7 @@ import java.util.ArrayList;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Encapsulates a specific entry in a JSON-format configuration file.
@@ -84,6 +86,22 @@ public class Knob {
    * The most recently observed value. Undefined if hasValue is false.
    */
   private volatile Object value;
+
+  /**
+   * Lambda call to Converter for Knobs, called to parse a new value in config file. Can be null.
+   */
+  protected @Nullable Function<Object, Object> converter;
+
+  /**
+   * Lambdas for calls to Converter.
+   */
+  private static final Function<Object, Object> IntConverter     = value -> Converter.toInteger(value, true);
+  private static final Function<Object, Object> LongConverter    = value -> Converter.toLong(value, true);
+  private static final Function<Object, Object> DoubleConverter  = value -> Converter.toDouble(value);
+  private static final Function<Object, Object> BooleanConverter = value -> Converter.toBoolean(value);
+  private static final Function<Object, Object> StringConverter  = value -> Converter.toString(value);
+  private static final Function<Object, Object> TimeConverter    = value -> value == null ? null : Converter.parseNanos(value);
+
 
   /**
    * The number of times we've had to fetch our value from the configuration file. Used to decide when to
@@ -264,7 +282,7 @@ public class Knob {
         }
 
         if (parsedFile != null && parsedFile.containsKey(key)) {
-          newValue = parsedFile.get(key);
+          newValue = this.converter == null ? parsedFile.get(key) : converter.apply(parsedFile.get(key));
           break;
         }
       }
@@ -356,14 +374,15 @@ public class Knob {
   public static class Integer extends Knob {
     public Integer(java.lang.String valueKey, java.lang.Integer defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
+      this.converter = IntConverter;
     }
 
     @Override public java.lang.Integer get() {
-      return Converter.toInteger(super.get(), true);
+      return (java.lang.Integer) super.get();
     }
 
     @Override public java.lang.Integer getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-      return Converter.toInteger(super.getWithTimeout(timeoutInMs), true);
+      return (java.lang.Integer) super.getWithTimeout(timeoutInMs);
     }
 
     @Override public Integer expireHint(java.lang.String dateStr) {
@@ -377,14 +396,15 @@ public class Knob {
   public static class Long extends Knob {
     public Long(java.lang.String valueKey, java.lang.Long defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
+      this.converter = LongConverter;
     }
 
     @Override public java.lang.Long get() {
-      return Converter.toLong(super.get(), true);
+      return (java.lang.Long) super.get();
     }
 
     @Override public java.lang.Long getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-      return Converter.toLong(super.getWithTimeout(timeoutInMs), true);
+      return (java.lang.Long) super.getWithTimeout(timeoutInMs);
     }
 
     @Override public Long expireHint(java.lang.String dateStr) {
@@ -398,14 +418,15 @@ public class Knob {
   public static class Double extends Knob {
     public Double(java.lang.String valueKey, java.lang.Double defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
+      this.converter = DoubleConverter;
     }
 
     @Override public java.lang.Double get() {
-      return Converter.toDouble(super.get());
+      return (java.lang.Double) super.get();
     }
 
     @Override public java.lang.Double getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-      return Converter.toDouble(super.getWithTimeout(timeoutInMs));
+      return (java.lang.Double) super.getWithTimeout(timeoutInMs);
     }
 
     @Override public Double expireHint(java.lang.String dateStr) {
@@ -419,14 +440,15 @@ public class Knob {
   public static class Boolean extends Knob {
     public Boolean(java.lang.String valueKey, java.lang.Boolean defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
+      this.converter = BooleanConverter;
     }
 
     @Override public java.lang.Boolean get() {
-      return Converter.toBoolean(super.get());
+      return (java.lang.Boolean) super.get();
     }
 
     @Override public java.lang.Boolean getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-      return Converter.toBoolean(super.getWithTimeout(timeoutInMs));
+      return (java.lang.Boolean) super.getWithTimeout(timeoutInMs);
     }
 
     @Override public Boolean expireHint(java.lang.String dateStr) {
@@ -440,14 +462,15 @@ public class Knob {
   public static class String extends Knob {
     public String(java.lang.String valueKey, java.lang.String defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
+      this.converter = StringConverter;
     }
 
     @Override public java.lang.String get() {
-      return Converter.toString(super.get());
+      return (java.lang.String) super.get();
     }
 
     @Override public java.lang.String getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-      return Converter.toString(super.getWithTimeout(timeoutInMs));
+      return (java.lang.String) super.getWithTimeout(timeoutInMs);
     }
 
     @Override public String expireHint(java.lang.String dateStr) {
@@ -492,6 +515,7 @@ public class Knob {
     public Duration(java.lang.String valueKey, java.lang.Long defaultValue, TimeUnit defaultTimeUnit, ConfigurationFile ... files) {
       // We always store default value in Nanoseconds
       super(valueKey, TimeUnit.NANOSECONDS.convert(defaultValue, defaultTimeUnit), files);
+      this.converter = TimeConverter;
     }
 
     //--------------------------------------------------------------------------------
@@ -508,7 +532,7 @@ public class Knob {
     }
 
     @Override public java.time.Duration getWithTimeout(java.lang.Long timeoutInMs, boolean bypassCache) throws ScalyrDeadlineException {
-      return java.time.Duration.of(getTimeInNanos(timeoutInMs, bypassCache), ChronoUnit.NANOS);
+      return java.time.Duration.of((long) super.getWithTimeout(timeoutInMs, bypassCache), ChronoUnit.NANOS);
     }
 
     @Override public Duration expireHint(java.lang.String dateStr) {
@@ -519,34 +543,19 @@ public class Knob {
     // New Methods
     //--------------------------------------------------------------------------------
 
-    public long nanos()   { return getTimeInNanos(null, false); }
+    public long nanos()   { return (long) super.getWithTimeout(null, false); }
 
-    public long micros()  { return TimeUnit.MICROSECONDS.convert(getTimeInNanos(null, false), TimeUnit.NANOSECONDS); }
+    public long micros()  { return TimeUnit.MICROSECONDS.convert(nanos(), TimeUnit.NANOSECONDS); }
 
-    public long millis()  { return TimeUnit.MILLISECONDS.convert(getTimeInNanos(null, false), TimeUnit.NANOSECONDS); }
+    public long millis()  { return TimeUnit.MILLISECONDS.convert(nanos(), TimeUnit.NANOSECONDS); }
 
-    public long seconds() { return TimeUnit.SECONDS.convert(getTimeInNanos(null, false),      TimeUnit.NANOSECONDS); }
+    public long seconds() { return TimeUnit.SECONDS.convert(nanos(),      TimeUnit.NANOSECONDS); }
 
-    public long minutes() { return TimeUnit.MINUTES.convert(getTimeInNanos(null, false),      TimeUnit.NANOSECONDS); }
+    public long minutes() { return TimeUnit.MINUTES.convert(nanos(),      TimeUnit.NANOSECONDS); }
 
-    public long hours()   { return TimeUnit.HOURS.convert(getTimeInNanos(null, false),        TimeUnit.NANOSECONDS); }
+    public long hours()   { return TimeUnit.HOURS.convert(nanos(),        TimeUnit.NANOSECONDS); }
 
-    public long days()    { return TimeUnit.DAYS.convert(getTimeInNanos(null, false),         TimeUnit.NANOSECONDS); }
-
-    //--------------------------------------------------------------------------------
-    // Helper Methods
-    //--------------------------------------------------------------------------------
-
-    private long getTimeInNanos(java.lang.Long timeoutInMs, boolean bypassCache) {
-      Object value = super.getWithTimeout(timeoutInMs, bypassCache);
-      if (value instanceof java.lang.Long || value instanceof java.lang.Integer) { // Using default value
-        return (long) value;
-      } else if (value instanceof java.lang.String) { // We got entry from config file
-        return Converter.parseNanos((java.lang.String) value);
-      } else {
-        throw new IllegalArgumentException("Got non-string, non-integral value: " + value);
-      }
-    }
+    public long days()    { return TimeUnit.DAYS.convert(nanos(),         TimeUnit.NANOSECONDS); }
   }
 
   /**
@@ -574,14 +583,15 @@ public class Knob {
   public static class Size extends Knob {
     public Size(java.lang.String valueKey, java.lang.Long defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
+      this.converter = LongConverter;
     }
 
     @Override public java.lang.Long get() {
-      return Converter.toLong(super.get(), true);
+      return (java.lang.Long) super.get();
     }
 
     @Override public java.lang.Long getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-      return Converter.toLong(super.getWithTimeout(timeoutInMs), true);
+      return (java.lang.Long) super.getWithTimeout(timeoutInMs);
     }
 
     @Override public Size expireHint(java.lang.String dateStr) {
