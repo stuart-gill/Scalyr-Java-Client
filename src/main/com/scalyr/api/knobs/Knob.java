@@ -88,12 +88,12 @@ public class Knob {
   private volatile Object value;
 
   /**
-   * Converter type for Knob SI Units. Can be null.
+   * Lambda call to Converter for Knobs, called to parse a new value in config file. Can be null.
    */
   protected @Nullable Function<Object, Object> converter;
 
   /**
-   * Various converters for SI units.
+   * Lambdas for calls to Converter.
    */
   private static final Function<Object, Object> IntConverter     = value -> Converter.toInteger(value, true);
   private static final Function<Object, Object> LongConverter    = value -> Converter.toLong(value, true);
