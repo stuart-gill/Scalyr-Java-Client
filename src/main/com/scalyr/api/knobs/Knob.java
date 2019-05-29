@@ -603,16 +603,16 @@ public class Knob {
     // Returns are doubles (for cases such as calling getKB() on '500B', which will yield a decimal).
     //-----------------------------------------------------------------------------------------------
 
-    public double getB()   { return (this.get()).doubleValue();     } // Byte
-    public double getKB()  { return this.getB() / 1000D;            } // Kilobyte
-    public double getKiB() { return this.getB() / 1024D;            } // Kibibyte
-    public double getMB()  { return this.getB() / Math.pow(10, 6);  } // Megabyte
-    public double getMiB() { return this.getB() / Math.pow(2, 20);  } // Mebibyte
-    public double getGB()  { return this.getB() / Math.pow(10, 9);  } // Gigabyte
-    public double getGiB() { return this.getB() / Math.pow(2, 30);  } // Gibibyte
-    public double getTB()  { return this.getB() / Math.pow(10, 12); } // Terabyte
-    public double getTiB() { return this.getB() / Math.pow(2, 40);  } // Tebibyte
-    public double getPB()  { return this.getB() / Math.pow(10, 15); } // Petabyte
-    public double getPiB() { return this.getB() / Math.pow(2, 50);  } // Pebibyte
+    public double getB()   { return this.get().doubleValue();        } // Byte
+    public double getKB()  { return this.getB() / 1000D;             } // Kilobyte
+    public double getKiB() { return this.getB() / 1024D;             } // Kibibyte
+    public double getMB()  { return this.getB() / Math.pow(10, 6);   } // Megabyte
+    public double getMiB() { return this.getB() / Math.pow(2, 20);   } // Mebibyte
+    public double getGB()  { return this.getB() / Math.pow(10, 9);   } // Gigabyte
+    public double getGiB() { return this.getB() / Math.pow(2, 30);   } // Gibibyte
+    public double getTB()  { return this.getB() / Math.pow(10, 12);  } // Terabyte
+    public double getTiB() { return this.getB() / Math.pow(2, 40);   } // Tebibyte
+    public double getPB()  { return this.getB() / Math.pow(10, 15);  } // Petabyte
+    public double getPiB() { return this.getB() / Math.pow(2, 50);   } // Pebibyte
   }
 }
