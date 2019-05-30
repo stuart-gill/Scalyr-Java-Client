@@ -260,8 +260,6 @@ public class KnobTest extends KnobTestBase {
     assertEquals(102, converterAccessCount);
   }
 
-
-
   public class TestLongKnob extends Knob {
     public TestLongKnob(java.lang.String valueKey, java.lang.Long defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, KnobTest::parseNanosForTests, files);
