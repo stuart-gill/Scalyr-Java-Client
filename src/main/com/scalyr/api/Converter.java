@@ -36,14 +36,10 @@ public class Converter {
    * values trigger undefined behavior.
    */
   public static Integer toInteger(Object value, boolean parseSI) {
-    if (value instanceof Integer)
-      return (Integer)value;
-    else if (value instanceof Long)
-      return (int)(long)(Long)value;
-    else if (value instanceof Double)
-      return (int)(double)(Double)value;
-    else if (value == null)
-      return null;
+    if (value == null)            return null;
+    if (value instanceof Integer) return (Integer)value;
+    if (value instanceof Long)    return (int)(long)(Long)value;
+    if (value instanceof Double)  return (int)(double)(Double)value;
 
     if (parseSI)
       return Converter.parseNumberWithSI(value).intValue();
@@ -70,14 +66,10 @@ public class Converter {
    * values trigger undefined behavior.
    */
   public static Long toLong(Object value, boolean parseSI) {
-    if (value instanceof Integer)
-      return (long)(int)(Integer)value;
-    else if (value instanceof Long)
-      return (Long)value;
-    else if (value instanceof Double)
-      return (long)(double)(Double)value;
-    else if (value == null)
-      return null;
+    if (value == null)            return null;
+    if (value instanceof Integer) return (long)(int)(Integer)value;
+    if (value instanceof Long)    return (Long)value;
+    if (value instanceof Double)  return (long)(double)(Double)value;
 
     if (parseSI)
       return Converter.parseNumberWithSI(value);
@@ -102,16 +94,12 @@ public class Converter {
    * A null input is returned as-is. Non-numeric inputs trigger an exception.
    */
   public static Double toDouble(Object value) {
-    if (value instanceof Integer)
-      return (double)(int)(Integer)value;
-    else if (value instanceof Long)
-      return (double)(long)(Long)value;
-    else if (value instanceof Double)
-      return (Double)value;
-    else if (value == null)
-      return null;
-    else
-      throw new RuntimeException("Can't convert [" + value + "] to Double");
+    if (value == null)            return null;
+    if (value instanceof Integer) return (double)(int)(Integer)value;
+    if (value instanceof Long)    return (double)(long)(Long)value;
+    if (value instanceof Double)  return (Double)value;
+
+    throw new RuntimeException("Can't convert [" + value + "] to Double");
   }
 
   /**
@@ -120,12 +108,10 @@ public class Converter {
    * A null input is returned as-is. Non-Boolean inputs trigger an exception.
    */
   public static Boolean toBoolean(Object value) {
-    if (value instanceof Boolean)
-      return (Boolean) value;
-    else if (value == null)
-      return null;
-    else
-      throw new RuntimeException("Can't convert [" + value + "] to Boolean");
+    if (value == null)               return null;
+    if (value instanceof Boolean)    return (Boolean) value;
+
+    throw new RuntimeException("Can't convert [" + value + "] to Boolean");
   }
 
   /**
@@ -241,14 +227,10 @@ public class Converter {
    * See {@link com.scalyr.api.knobs.Knob.Duration} DurationKnob javadocs for usage/rules.
    */
   public static Long parseNanos(Object value) {
-    if (value instanceof Integer)
-      return (long)(int)(Integer)value;
-    else if (value instanceof Long)
-      return (Long)value;
-    else if (value instanceof Double)
-      return (long)(double)(Double)value;
-    else if (value == null)
-      return null;
+    if (value == null)            return null;
+    if (value instanceof Integer) return (long)(int)(Integer)value;
+    if (value instanceof Long)    return (Long)value;
+    if (value instanceof Double)  return (long)(double)(Double)value;
 
     String input = ((String) value).trim(); // Eliminate leading/trailing spaces
 
@@ -291,7 +273,7 @@ public class Converter {
       }
     }
 
-    // If no units were in the string, we interpret it as nanoseconds
+    // If no units were in the string, we interpret it as nanoseconds. Otherwise get and apply conversion from map.
     return TimeUnit.NANOSECONDS.convert(java.lang.Long.parseLong(magnitude),
               units.length() == 0 ? TimeUnit.NANOSECONDS : timeUnitMap.get(units));
   }
