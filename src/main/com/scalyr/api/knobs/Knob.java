@@ -93,17 +93,6 @@ public class Knob {
   protected @Nullable Function<Object, Object> converter;
 
   /**
-   * Lambdas for calls to Converter.
-   */
-  private static final Function<Object, Object> IntConverter     = value -> Converter.toInteger(value, true);
-  private static final Function<Object, Object> LongConverter    = value -> Converter.toLong(value, true);
-  private static final Function<Object, Object> DoubleConverter  = value -> Converter.toDouble(value);
-  private static final Function<Object, Object> BooleanConverter = value -> Converter.toBoolean(value);
-  private static final Function<Object, Object> StringConverter  = value -> Converter.toString(value);
-  private static final Function<Object, Object> TimeConverter    = value -> value == null ? null : Converter.parseNanos(value);
-
-
-  /**
    * The number of times we've had to fetch our value from the configuration file. Used to decide when to
    * create a file listener and proactively track the value.
    */
@@ -139,10 +128,11 @@ public class Knob {
    * @param key The key to look for (a fieldname of the top-level JSON object in the file), or null to always use defaultValue.
    * @param defaultValue Value to return from {@link #get()} if the file does not exist or does not
    *     contain the key.
+   * @param converter The converter method to use for parsing config values
    * @param files The files in which we look for the value. We use the first file that
    *     defines the specified key. If no files are specified, we use defaultFiles
    */
-  public Knob(java.lang.String key, Object defaultValue, ConfigurationFile ... files) {
+  public Knob(java.lang.String key, Object defaultValue, Function<Object, Object> converter, ConfigurationFile ... files) {
     if (files.length > 0) {
       this.files = files;
     } else {
@@ -150,6 +140,11 @@ public class Knob {
     }
     this.key = key;
     this.defaultValue = defaultValue;
+    this.converter = converter;
+  }
+
+  public Knob(java.lang.String key, Object defaultValue, ConfigurationFile ... files) {
+    this(key, defaultValue, null, files);
   }
 
   /**
@@ -373,8 +368,7 @@ public class Knob {
    */
   public static class Integer extends Knob {
     public Integer(java.lang.String valueKey, java.lang.Integer defaultValue, ConfigurationFile ... files) {
-      super(valueKey, defaultValue, files);
-      this.converter = IntConverter;
+      super(valueKey, defaultValue, Converter::toIntegerWithSI, files);
     }
 
     @Override public java.lang.Integer get() {
@@ -395,8 +389,7 @@ public class Knob {
    */
   public static class Long extends Knob {
     public Long(java.lang.String valueKey, java.lang.Long defaultValue, ConfigurationFile ... files) {
-      super(valueKey, defaultValue, files);
-      this.converter = LongConverter;
+      super(valueKey, defaultValue, Converter::toLongWithSI, files);
     }
 
     @Override public java.lang.Long get() {
@@ -417,8 +410,7 @@ public class Knob {
    */
   public static class Double extends Knob {
     public Double(java.lang.String valueKey, java.lang.Double defaultValue, ConfigurationFile ... files) {
-      super(valueKey, defaultValue, files);
-      this.converter = DoubleConverter;
+      super(valueKey, defaultValue, Converter::toDouble, files);
     }
 
     @Override public java.lang.Double get() {
@@ -439,8 +431,7 @@ public class Knob {
    */
   public static class Boolean extends Knob {
     public Boolean(java.lang.String valueKey, java.lang.Boolean defaultValue, ConfigurationFile ... files) {
-      super(valueKey, defaultValue, files);
-      this.converter = BooleanConverter;
+      super(valueKey, defaultValue, Converter::toBoolean, files);
     }
 
     @Override public java.lang.Boolean get() {
@@ -461,8 +452,7 @@ public class Knob {
    */
   public static class String extends Knob {
     public String(java.lang.String valueKey, java.lang.String defaultValue, ConfigurationFile ... files) {
-      super(valueKey, defaultValue, files);
-      this.converter = StringConverter;
+      super(valueKey, defaultValue, Converter::toString, files);
     }
 
     @Override public java.lang.String get() {
@@ -514,8 +504,7 @@ public class Knob {
 
     public Duration(java.lang.String valueKey, java.lang.Long defaultValue, TimeUnit defaultTimeUnit, ConfigurationFile ... files) {
       // We always store default value in Nanoseconds
-      super(valueKey, TimeUnit.NANOSECONDS.convert(defaultValue, defaultTimeUnit), files);
-      this.converter = TimeConverter;
+      super(valueKey, TimeUnit.NANOSECONDS.convert(defaultValue, defaultTimeUnit), Converter::parseNanos, files);
     }
 
     //--------------------------------------------------------------------------------
@@ -580,22 +569,9 @@ public class Knob {
    *  Knob.Size myKnob = new Knob.Size("myLabel", 1L, paramFile);
    *  double valueAsKilobytes = myKnob.getKB();
    */
-  public static class Size extends Knob {
+  public static class Size extends Knob.Long {
     public Size(java.lang.String valueKey, java.lang.Long defaultValue, ConfigurationFile ... files) {
       super(valueKey, defaultValue, files);
-      this.converter = LongConverter;
-    }
-
-    @Override public java.lang.Long get() {
-      return (java.lang.Long) super.get();
-    }
-
-    @Override public java.lang.Long getWithTimeout(java.lang.Long timeoutInMs) throws ScalyrDeadlineException {
-      return (java.lang.Long) super.getWithTimeout(timeoutInMs);
-    }
-
-    @Override public Size expireHint(java.lang.String dateStr) {
-      return this;
     }
 
     //-----------------------------------------------------------------------------------------------

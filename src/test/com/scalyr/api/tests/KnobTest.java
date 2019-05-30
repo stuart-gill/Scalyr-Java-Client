@@ -447,7 +447,7 @@ public class KnobTest extends KnobTestBase {
       put("  2DAYS"               , 172800000000000L);
     }};
 
-    positiveTests.forEach((k,v) -> assertEquals(Converter.parseNanos(k), (long) v));
+    positiveTests.forEach((k,v) -> assertEquals(Converter.parseNanos(k), v));
 
     HashSet<String> negativeTests = new HashSet<String>(){{
       add("134nanoos");

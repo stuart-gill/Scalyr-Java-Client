@@ -51,6 +51,8 @@ public class Converter {
       throw new RuntimeException("Can't convert [" + value + "] to Integer");
   }
 
+  public static Integer toIntegerWithSI(Object value) { return toInteger(value, true); }
+
   /**
    * Convert any numeric type to Integer.
    * <p>
@@ -82,6 +84,8 @@ public class Converter {
     else
       throw new RuntimeException("Can't convert [" + value + "] to Long");
   }
+
+  public static Long toLongWithSI(Object value) { return toLong(value, true); }
 
   /**
    * Convert any numeric type to Long.
@@ -236,13 +240,15 @@ public class Converter {
    * Parses a config string for a Duration Knob and returns its value in Nanoseconds.
    * See {@link com.scalyr.api.knobs.Knob.Duration} DurationKnob javadocs for usage/rules.
    */
-  public static long parseNanos(Object value) {
+  public static Long parseNanos(Object value) {
     if (value instanceof Integer)
       return (long)(int)(Integer)value;
     else if (value instanceof Long)
       return (Long)value;
     else if (value instanceof Double)
       return (long)(double)(Double)value;
+    else if (value == null)
+      return null;
 
     String input = ((String) value).trim(); // Eliminate leading/trailing spaces
 
