@@ -262,11 +262,11 @@ public class KnobTest extends KnobTestBase {
 
   public class TestLongKnob extends Knob {
     public TestLongKnob(java.lang.String valueKey, java.lang.Long defaultValue, ConfigurationFile ... files) {
-      super(valueKey, defaultValue, KnobTest::parseNanosForTests, files);
+      super(valueKey, defaultValue, KnobTest::toLongWithSIForTests, files);
     }
   }
 
-  public static java.lang.Long parseNanosForTests(Object value) {
+  public static java.lang.Long toLongWithSIForTests(Object value) {
     converterAccessCount++;
     return Converter.toLongWithSI(value);
   }
