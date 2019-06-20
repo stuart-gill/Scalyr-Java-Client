@@ -4,6 +4,7 @@ import com.scalyr.api.internal.ScalyrService.RpcOptions;
 import com.scalyr.api.knobs.Knob;
 import org.apache.http.HttpEntity;
 import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.entity.GzipCompressingEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ByteArrayEntity;
@@ -16,9 +17,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
+import java.util.zip.GZIPInputStream;
 
 /**
  * AbstractHttpClient implementation based on the Apache HTTP client library.
+ * Has Gzip compression capability.
  */
 public class ApacheHttpClient extends AbstractHttpClient {
   /**
@@ -31,6 +34,9 @@ public class ApacheHttpClient extends AbstractHttpClient {
   private String responseContentType;
   private String responseEncoding;
 
+  /**
+   * Version of constructor with desired Content-Encoding passed in.
+   */
   public ApacheHttpClient(URL url, int requestLength, boolean closeConnections, RpcOptions options,
                           byte[] requestBody, int requestBodyLength, String contentType, String contentEncoding) throws IOException {
     if (connectionManager == null) {
@@ -58,19 +64,43 @@ public class ApacheHttpClient extends AbstractHttpClient {
 
     if (contentEncoding != null && contentEncoding.length() > 0)
       request.setHeader("Content-Encoding", contentEncoding);
+      request.setHeader("Accept-Encoding", contentEncoding + ", identity");
 
     ByteArrayEntity inputEntity = new ByteArrayEntity(requestBody, 0, requestBodyLength);
     inputEntity.setContentType(contentType);
-    request.setEntity(inputEntity);
+
+    request.setEntity("gzip".equals(contentEncoding) ? new GzipCompressingEntity(inputEntity) : inputEntity);
 
     request.setConfig(configBuilder.build());
 
     response = httpClient.execute(request);
 
     HttpEntity responseEntity = response.getEntity();
-    responseStream = (responseEntity != null) ? responseEntity.getContent() : null;
     responseContentType = (responseEntity != null && responseEntity.getContentType() != null) ? responseEntity.getContentType().getValue() : null;
     responseEncoding = (responseEntity != null && responseEntity.getContentEncoding() != null) ? responseEntity.getContentEncoding().getValue() : null;
+    responseStream = getResponseStream(responseEntity, responseEncoding);
+  }
+
+  /**
+   * Version of constructor with a Gzip Compression toggle, rather than a freely settable content-encoding.
+   * If enableGzip is true, Content-Encoding is set to "gzip".
+   */
+  public ApacheHttpClient(URL url, int requestLength, boolean closeConnections, RpcOptions options,
+                          byte[] requestBody, int requestBodyLength, String contentType, boolean enableGzip) throws IOException {
+    this(url, requestLength, closeConnections, options, requestBody, requestBodyLength, contentType, enableGzip ? "gzip" : null);
+  }
+
+
+  private InputStream getResponseStream(HttpEntity responseEntity, String responseEncoding) throws IOException {
+    if (responseEntity != null) {
+      if (responseEncoding != null && responseEncoding.contains("gzip")) {
+        return new GZIPInputStream(responseEntity.getContent());
+      } else {
+        return responseEntity.getContent();
+      }
+    } else {
+      return null;
+    }
   }
 
   private static void createConnectionManager() {

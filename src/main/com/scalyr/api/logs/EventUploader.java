@@ -94,6 +94,12 @@ public class EventUploader {
   private String ourHostname;
 
   /**
+   * Used to enable/disable Gzip compression on uploads.
+   * Can be toggled using Events.enableGzip() and Events.disableGzip().
+   */
+  protected static boolean enableGzip = Events.ENABLE_GZIP_BY_DEFAULT;
+
+  /**
    * Random number generator used to avoid having multiple clients all upload events at the exact
    * same time. Synchronize access.
    */
@@ -258,7 +264,7 @@ public class EventUploader {
    * THIS METHOD IS INTENDED FOR INTERNAL USE ONLY.
    */
   public EventUploader(LogService logService, int memoryLimit, String sessionId, boolean autoUpload,
-      EventAttributes serverAttributes, boolean enableMetaMonitoring, boolean reportThreadNames) {
+                       EventAttributes serverAttributes, boolean enableMetaMonitoring, boolean reportThreadNames) {
     this(logService, memoryLimit, sessionId, autoUpload, serverAttributes, enableMetaMonitoring, reportThreadNames, null, null);
   }
 
@@ -270,18 +276,16 @@ public class EventUploader {
   public EventUploader(LogService logService, int memoryLimit, String sessionId, boolean autoUpload,
       EventAttributes serverAttributes, boolean enableMetaMonitoring, boolean reportThreadNames,
       Timer sharedTimer_, Executor uploadExecutor_) {
-    this.logService = logService;
-    this.autoUpload = autoUpload;
-    this.reportThreadNames = reportThreadNames;
-
-    this.memoryLimit = memoryLimit;
-    pendingEventBuffer = new CircularByteArray(memoryLimit);
-
-    this.sessionId = sessionId;
-    this.serverAttributes = serverAttributes;
+    this.logService           = logService;
+    this.autoUpload           = autoUpload;
+    this.reportThreadNames    = reportThreadNames;
+    this.memoryLimit          = memoryLimit;
+    this.pendingEventBuffer   = new CircularByteArray(memoryLimit);
+    this.sessionId            = sessionId;
+    this.serverAttributes     = serverAttributes;
     this.enableMetaMonitoring = enableMetaMonitoring;
+    this.uploadExecutor       = uploadExecutor_;
 
-    this.uploadExecutor = uploadExecutor_;
     launchUploadTimer(sharedTimer_);
 
     // To aid customers being able to quickly see the results of events being uploaded
@@ -543,7 +547,7 @@ public class EventUploader {
       lastUploadStartMs = ScalyrUtil.currentTimeMillis();
       JSONObject rawResponse;
       try {
-        rawResponse = logService.uploadEvents(sessionId, sessionInfo, eventsToUpload, threadInfos);
+        rawResponse = logService.uploadEvents(sessionId, sessionInfo, eventsToUpload, threadInfos, enableGzip);
       } catch (RuntimeException ex) {
         logUploadFailure(ex.toString());
         throw ex;

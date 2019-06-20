@@ -30,6 +30,11 @@ public class Events {
   private static AtomicReference<EventUploader> uploaderInstance = new AtomicReference<EventUploader>();
 
   /**
+   * Whether to enable gzip compression on uploads by default.
+   */
+  public final static boolean ENABLE_GZIP_BY_DEFAULT = true;
+
+  /**
    * The most recent value passed to setEventFilter. We store this here, in addition to in the
    * EventUploader, in case setEventFilter is called before init().
    */
@@ -106,6 +111,28 @@ public class Events {
   }
 
   /**
+   * Enable Gzip compression in the uploader.
+   */
+  public static void enableGzip() {
+    EventUploader instance = uploaderInstance.get();
+    if (instance == null)
+      throw new RuntimeException("Call Events.init() before Events.enableGzip()");
+
+    instance.enableGzip = true;
+  }
+
+  /**
+   * Disable Gzip compression in the uploader.
+   */
+  public static void disableGzip() {
+    EventUploader instance = uploaderInstance.get();
+    if (instance == null)
+      throw new RuntimeException("Call Events.init() before Events.disableGzip()");
+
+    instance.enableGzip = false;
+  }
+
+  /**
    * Specify whether to set connection="close" on each HTTP request to the Scalyr server.
    * Defaults to true. This avoids any possibility of problems with the HTTP client failing
    * to correctly track the connection state.
@@ -113,7 +140,7 @@ public class Events {
   public static void setCloseConnections(boolean value) {
     EventUploader instance = uploaderInstance.get();
     if (instance == null)
-      throw new RuntimeException("Call Events.init() before this method");
+      throw new RuntimeException("Call Events.init() before Events.setCloseConnections()");
 
     instance.logService.closeConnections = value;
   }
@@ -133,7 +160,7 @@ public class Events {
   public static void setExplicitlyDisconnect(boolean value) {
     EventUploader instance = uploaderInstance.get();
     if (instance == null)
-      throw new RuntimeException("Call Events.init() before this method");
+      throw new RuntimeException("Call Events.init() before Events.setExplicitlyDisconnect()");
 
     instance.logService.explicitlyDisconnect = value;
   }
@@ -472,5 +499,6 @@ public class Events {
     EventUploader instance = new EventUploader(logService, memoryLimit, artificialSessionId, autoUpload, null, true, reportThreadNames);
     uploaderInstance.set(instance);
     instance.eventFilter = eventFilter;
+    instance.enableGzip = Events.ENABLE_GZIP_BY_DEFAULT;
   }
 }
