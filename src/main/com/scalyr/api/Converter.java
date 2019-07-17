@@ -241,6 +241,7 @@ public class Converter {
     short state = 0;
     char c;
     boolean seenNumber = false;
+    boolean seenSign = false;
     String magnitude = "";
     String units = "";
     final String exceptionMessage = "Invalid duration format: \"" + input + "\"";
@@ -250,7 +251,10 @@ public class Converter {
       c = input.charAt(i);
       switch (state) {
         case 0: // Trying to parse number
-          if (Character.isDigit(c)) {
+          if (c == '-' || c == '+') {
+            if (seenNumber || seenSign) throw new RuntimeException(exceptionMessage);
+            seenSign = true;
+          } else if (Character.isDigit(c)) {
             seenNumber = true;
           } else if (!seenNumber) { // If we've hit a non-# character before getting any numbers
             throw new RuntimeException(exceptionMessage);
