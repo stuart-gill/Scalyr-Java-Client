@@ -188,7 +188,7 @@ public class EventAttributes {
 
   /**
    * Copy all attributes from the given object to this object. In case of conflicts,
-   * attributes from objectToCopy are ignored.
+   * attributes from {@code source} are ignored.
    *
    * Return this object.
    */
