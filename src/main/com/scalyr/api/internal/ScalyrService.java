@@ -358,12 +358,8 @@ public abstract class ScalyrService {
 
         byte[] rawResponse;
 
-        try {
-          InputStream input = httpClient.getInputStream();
-          rawResponse = readEntireStream(input);
-        } finally {
-          httpClient.finishedReadingResponse();
-        }
+        InputStream input = httpClient.getInputStream();
+        rawResponse = readEntireStream(input);
 
         // Log a random sample of server response times.
         Severity severity = Severity.fine;
@@ -414,6 +410,11 @@ public abstract class ScalyrService {
         }
 
       } finally {
+        if (httpClient != null) {
+          // ensure input stream is closed if client is created
+          InputStream input = httpClient.getInputStream();
+          httpClient.finishedReadingResponse();
+        }
         if (TuningConstants.serverInvocationTimeCounterSecs != null) {
           TuningConstants.serverInvocationTimeCounterSecs.increment((ScalyrUtil.currentTimeMillis() - startTimeMs) / 1000.0);
         }
