@@ -29,13 +29,7 @@ import com.scalyr.api.ScalyrServerException;
 import com.scalyr.api.internal.ScalyrService;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.query.QueryService;
-import com.scalyr.api.query.QueryService.CreateTimeseriesResult;
-import com.scalyr.api.query.QueryService.FacetQueryResult;
-import com.scalyr.api.query.QueryService.LogQueryResult;
-import com.scalyr.api.query.QueryService.NumericQueryResult;
-import com.scalyr.api.query.QueryService.PageMode;
-import com.scalyr.api.query.QueryService.TimeseriesQueryResult;
-import com.scalyr.api.query.QueryService.TimeseriesQuerySpec;
+import com.scalyr.api.query.QueryService.*;
 import com.scalyr.api.tests.MockServer.ExpectedRequest;
 
 /**
@@ -264,20 +258,15 @@ public class QueryTest extends LogsTestBase {
         "{'token': 'dummyToken',"
       + "'queries': ["
       + "  {"
-      + "  'timeseriesId': 't1',"
+      + "  'filter': 'testFilter1',"
+      + "  'function': 'testFunction1',"
       + "  'startTime': '4h',"
       + "  'endTime': '2h',"
       + "  'buckets': 3"
       + "  },"
       + "  {"
-      + "  'timeseriesId': 't2',"
-      + "  'startTime': '1d',"
-      + "  'endTime': null,"
-      + "  'buckets': 1"
-      + "  },"
-      + "  {"
-      + "  'filter': 'testFilter',"
-      + "  'function': 'testFunction',"
+      + "  'filter': 'testFilter2',"
+      + "  'function': 'testFunction2',"
       + "  'startTime': '4h',"
       + "  'endTime': '2h',"
       + "  'buckets': 10"
@@ -287,65 +276,31 @@ public class QueryTest extends LogsTestBase {
       + "'executionTime': 27,"
       + "'results': ["
       + "  { 'executionTime': 9, 'values': [1, 2.0, -3.5] },"
-      + "  { 'executionTime': 6, 'values': [1234567] },"
       + "  { 'executionTime': 12, 'values': [1,4,8,5,3,-10,4,8,3,1] }"
       + "]"
       + "}"
         );
 
-    // Queries 1 and 2 use old process, with timeseriesID, assuming use of createTimeseries()
-
     TimeseriesQuerySpec query1 = new TimeseriesQuerySpec();
-    query1.timeseriesId = "t1";
+    query1.filter = "testFilter1";
+    query1.function = "testFunction1";
     query1.startTime = "4h";
     query1.endTime = "2h";
     query1.buckets = 3;
 
     TimeseriesQuerySpec query2 = new TimeseriesQuerySpec();
-    query2.timeseriesId = "t2";
-    query2.startTime = "1d";
+    query2.filter = "testFilter2";
+    query2.function = "testFunction2";
+    query2.startTime = "4h";
+    query2.endTime = "2h";
+    query2.buckets = 10;
 
-    // Query 3 uses new process, passing in filter and function to the TimeseriesQuerySpec
-
-    TimeseriesQuerySpec query3 = new TimeseriesQuerySpec();
-    query3.startTime = "4h";
-    query3.endTime = "2h";
-    query3.buckets = 10;
-    query3.filter = "testFilter";
-    query3.function = "testFunction";
-
-    TimeseriesQueryResult queryResult = queryService.timeseriesQuery(new TimeseriesQuerySpec[]{query1, query2, query3});
+    TimeseriesQueryResult queryResult = queryService.timeseriesQuery(new TimeseriesQuerySpec[]{query1, query2});
     assertEquals(
-        "{TimeseriesQueryResult: 3 values, execution time 27.0 ms, values ["
+        "{TimeseriesQueryResult: 2 values, execution time 27.0 ms, values ["
       + "{NumericQueryResult: 3 values, execution time 9.0 ms, values [1.0, 2.0, -3.5]}, "
-      + "{NumericQueryResult: 1 value, execution time 6.0 ms, values [1234567.0]}, "
       + "{NumericQueryResult: 10 values, execution time 12.0 ms, values [1.0, 4.0, 8.0, 5.0, 3.0, -10.0, 4.0, 8.0, 3.0, 1.0]}]}",
         queryResult.toString());
-  }
-
-  /**
-   * A simple test of QueryService.createTimeseries(), issuing a request and verifying that the response is
-   * correctly unpacked.
-   */
-  @Test public void testCreateTimeseries() {
-    QueryService queryService = new MockQueryService();
-
-    expectRequest(
-        "api/createTimeseries",
-        "{'token': 'dummyToken',"
-      + "'queryType': 'numeric',"
-      + "'filter': 'foo > 5',"
-      + "'function': 'max(x)'"
-      + "}",
-        "{'status': 'success',"
-      + "'timeseriesId': 'timeseries1'"
-      + "}"
-        );
-
-    CreateTimeseriesResult result = queryService.createTimeseries("foo > 5", "max(x)");
-    assertEquals(
-        "{CreateTimeseriesResult: timeseriesId=timeseries1}",
-        result.toString());
   }
 
   // @Test public void liveTest() {

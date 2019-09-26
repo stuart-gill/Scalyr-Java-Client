@@ -166,11 +166,10 @@ public class QueryService extends ScalyrService {
    * Retrieve numeric data, e.g. for graphing. You can count the rate of events matching some criterion (e.g. error
    * rate), or retrieve a numeric field (e.g. response size).
    *
-   * If you will be be invoking the same query repeatedly, you may want to create a timeseries for the query. This is
-   * especially useful if you are using the Scalyr API to feed a home-built dashboard, alerting system, or other
-   * automated tool. A timeseries precomputes a numeric query, allowing you to execute queries almost instantaneously,
-   * and without exhausting your query execution limit. Use the createTimeseries method to create a timeseries, and
-   * timeseriesQuery to execute queries using a timeseries.
+   * If you will be be invoking the same query repeatedly, you may want to use the {@link #timeseriesQuery} method
+   * instead.  This is especially useful if you are using the Scalyr API to feed a home-built dashboard, alerting
+   * system, or other automated tool. A timeseries precomputes a numeric query, allowing you to execute queries almost
+   * instantaneously, and without exhausting your query execution limit.
    *
    * @param filter Specifies which log records to match, using the same syntax as the Expression field in the
    *     query UI. To match all log records, pass null or an empty string.
@@ -308,9 +307,18 @@ public class QueryService extends ScalyrService {
   }
 
   /**
-   * Retrieve numeric data from a previously defined timeseries. This method is similar to numericQuery(), but relies on
-   * parameters defined by a previous call to createTimeseries, and usually executes in a few milliseconds (plus network
-   * latency of course). The timeseriesQuery method also allows you to execute multiple queries in a single request.
+   * Retrieve numeric data from one or more timeseries, automatically creating them as a side effect if necessary.  A
+   * timeseries precomputes a numeric query, allowing you to execute queries almost instantaneously, and without
+   * exhausting your query execution limit.  This is especially useful if you are using the Scalyr API to feed a
+   * home-built dashboard, alerting system, or other automated tool.
+   *
+   * When new timeseries are defined, they immediately capture data from this moment onward and our servers begin
+   * a background process to backpropagate the timeseries over data we have already received.  The result is that,
+   * within an hour of defining a new timeseries, you should be able to rapidly query for historical data as well
+   * as new data.
+   *
+   * This method's parameters are similar to {@link #numericQuery}; with the one difference being that you may specify
+   * multiple queries in a single request.
    *
    * @param queries The queries to execute.
    *
@@ -327,12 +335,8 @@ public class QueryService extends ScalyrService {
 
     for (TimeseriesQuerySpec query : queries) {
       JSONObject queryJson = new JSONObject();
-      if (query.timeseriesId != null) { // Existence of a timeseriesID takes precedence, although it will be deprecated eventually.
-        queryJson.put("timeseriesId", query.timeseriesId);
-      } else { // If using new API (no timeseriesID), use filter and function.
-        if (query.filter   != null) { queryJson.put("filter", query.filter);     }
-        if (query.function != null) { queryJson.put("function", query.function); }
-      }
+      if (query.filter   != null) { queryJson.put("filter", query.filter);     }
+      if (query.function != null) { queryJson.put("function", query.function); }
       queryJson.put("startTime", query.startTime);
       queryJson.put("endTime", query.endTime);
       queryJson.put("buckets", query.buckets);
@@ -350,9 +354,6 @@ public class QueryService extends ScalyrService {
    * Parameters for a single timeseries query.
    */
   public static class TimeseriesQuerySpec {
-    /** This field is deprecated. Use 'filter' and 'function' instead. */
-    @Deprecated public String timeseriesId;
-
     /**
      * The time range to query, using the same syntax as the query UI. You can also supply a simple timestamp,
      * measured in seconds, milliseconds, or nanoseconds since 1/1/1970. endTime is optional, defaulting to
@@ -399,34 +400,6 @@ public class QueryService extends ScalyrService {
     return result;
   }
 
-  /**
-   * Deprecated. See git history for javadoc.
-   */
-  @Deprecated public CreateTimeseriesResult createTimeseries(String filter, String function)
-      throws ScalyrException, ScalyrNetworkException {
-    JSONObject parameters = new JSONObject();
-    parameters.put("token", apiToken);
-    parameters.put("queryType", "numeric");
-
-    if (filter != null)
-      parameters.put("filter", filter);
-
-    if (function != null)
-      parameters.put("function", function);
-
-    JSONObject rawApiResponse = invokeApi("api/createTimeseries", parameters);
-    checkResponseStatus(rawApiResponse);
-    return unpackCreateTimeseriesResult(rawApiResponse);
-  }
-
-  /**
-   * Deprecated helper method for createTimeSeries().
-   */
-  private CreateTimeseriesResult unpackCreateTimeseriesResult(JSONObject rawApiResponse) {
-    String timeseriesId = rawApiResponse.get("timeseriesId").toString();
-
-    return new CreateTimeseriesResult(timeseriesId);
-  }
 
   /**
    * Convert the given value to a Long. If the value is null, return null. If the value cannot be
@@ -733,21 +706,4 @@ public class QueryService extends ScalyrService {
     }
   }
 
-  /**
-   * Encapsulates the result of creating a timeseries.
-   */
-  public static class CreateTimeseriesResult {
-    /**
-     * The ID of the newly created timeseries. Use this value when calling timeseriesQuery.
-     */
-    public final String timeseriesId;
-
-    public CreateTimeseriesResult(String timeseriesId) {
-      this.timeseriesId = timeseriesId;
-    }
-
-    @Override public String toString() {
-      return "{CreateTimeseriesResult: timeseriesId=" + timeseriesId + "}";
-    }
-  }
 }
