@@ -30,6 +30,7 @@ import java.io.UnsupportedEncodingException;
 import java.util.Date;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.function.Function;
 
 /**
  * ConfigurationFile implementation that reads from a file in the local filesystem.
@@ -47,6 +48,12 @@ public class LocalConfigurationFile extends ConfigurationFile {
    * Filesystem location of the file we read from.
    */
   private final File file;
+
+  /**
+   * If not null, then we invoke this on the content of the configuration file whenever reading it. Can be used to apply
+   * transformations to the file.
+   */
+  private final Function<String, String> fileTransformer;
 
   /**
    * Incremented on each change to the file (the initial state counts as a change). Reset to 0 if
@@ -100,9 +107,23 @@ public class LocalConfigurationFile extends ConfigurationFile {
    * @param pollIntervalMs How often to check for changes to the file (in milliseconds).
    */
   LocalConfigurationFile(File rootDir, String filePath, int pollIntervalMs) {
+    this(rootDir, filePath, pollIntervalMs, null);
+  }
+
+  /**
+   * Construct a LocalConfigurationFile.
+   *
+   * @param rootDir Directory to which filePath is relative.
+   * @param filePath Path/name for this file.
+   * @param pollIntervalMs How often to check for changes to the file (in milliseconds).
+   * @param fileTransformer If not null, then we invoke this on the content of the configuration file whenever reading it.
+   *     Can be used to apply transformations to the file.
+   */
+  LocalConfigurationFile(File rootDir, String filePath, int pollIntervalMs, Function<String, String> fileTransformer) {
     super(filePath);
 
     this.rootDir = rootDir;
+    this.fileTransformer = fileTransformer;
 
     // Fetch the file's initial state.
     file = new File(rootDir, removeLeadingSlash(filePath));
@@ -174,7 +195,9 @@ public class LocalConfigurationFile extends ConfigurationFile {
     if (fileLen >= 0) {
       try {
         newFileContent = ScalyrUtil.readFileContent(file);
-
+        if (fileTransformer != null) {
+          newFileContent = fileTransformer.apply(newFileContent);
+        }
       } catch (UnsupportedEncodingException ex) {
         Logging.log(Severity.warning, Logging.tagLocalConfigFileError,
             "Error reading file [" + file.getAbsolutePath() + "]", ex);

@@ -31,6 +31,7 @@ import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 /**
  * Abstract interface for a configuration file.
@@ -104,9 +105,23 @@ public abstract class ConfigurationFile {
    * @param pollIntervalMs How often to check for changes to the filesystem, in milliseconds.
    */
   public static ConfigurationFileFactory makeLocalFileFactory(final File rootDir, final int pollIntervalMs) {
+    return makeLocalFileFactory(rootDir, pollIntervalMs, null);
+  }
+
+  /**
+   * Return a ConfigurationFileFactory that retrieves files from the local filesystem.
+   *
+   * @param rootDir Directory in which configuration files are located. Pathnames are interpreted
+   *     relative to this directory.
+   * @param pollIntervalMs How often to check for changes to the filesystem, in milliseconds.
+   * @param fileTransformer If not null, then we invoke this on the content of the configuration file whenever reading it.
+   *     Can be used to apply transformations to the file.
+   */
+  public static ConfigurationFileFactory makeLocalFileFactory(final File rootDir, final int pollIntervalMs,
+      Function<String, String> fileTransformer) {
     return new ConfigurationFileFactory(){
       @Override protected ConfigurationFile createFileReference(String filePath) {
-        return new LocalConfigurationFile(rootDir, filePath, pollIntervalMs);
+        return new LocalConfigurationFile(rootDir, filePath, pollIntervalMs, fileTransformer);
       }
     };
   }

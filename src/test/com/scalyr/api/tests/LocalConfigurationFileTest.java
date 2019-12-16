@@ -88,6 +88,14 @@ public class LocalConfigurationFileTest {
     assertEquals((Integer)20, Knob.getInteger("x", (Integer)15, factory2.getFile("/foo")));
   }
 
+  @Test public void testFileTransformers() throws IOException, InterruptedException {
+    // Create a simple file.
+    createOrUpdateFile(paramDir1, "foo", "{\"x\": 10}");
+    ConfigurationFileFactory factory1 = ConfigurationFile.makeLocalFileFactory(paramDir1, 100, (s) -> s.replace("}", ", \"y\": 20}"));
+    assertEquals((Integer)10, Knob.getInteger("x", null, factory1.getFile("/foo")));
+    assertEquals((Integer)20, Knob.getInteger("y", null, factory1.getFile("/foo")));
+  }
+
   @Test public void testUsingLastKnownGoodState() throws IOException, InterruptedException {
     // Create a simple file.
     createOrUpdateFile(paramDir1, "foo", "{\"x\": 10}");
