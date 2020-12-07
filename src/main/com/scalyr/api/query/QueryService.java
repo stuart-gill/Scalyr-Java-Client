@@ -20,30 +20,64 @@ package com.scalyr.api.query;
 import com.scalyr.api.ScalyrException;
 import com.scalyr.api.ScalyrNetworkException;
 import com.scalyr.api.ScalyrServerException;
+import com.scalyr.api.internal.Logging;
 import com.scalyr.api.internal.ScalyrService;
+import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONArray;
 import com.scalyr.api.json.JSONObject;
 import com.scalyr.api.logs.EventAttributes;
 import com.scalyr.api.logs.Severity;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.stream.Stream;
+import java.util.stream.Collectors;
 
 /**
  * Encapsulates the raw HTTP-level API to the log query service.
  */
 public class QueryService extends ScalyrService {
+
+  /** If nonzero, divide queries into chunks of at most this size for serial execution. */
+  private final int chunkSizeHours;
+
+
   /**
-   * Construct a QueryService.
+   * Construct a QueryService for non-chunked execution.
    *
    * @param apiToken The API authorization token to use when communicating with the server. Should
    *     be a "Read Logs" token.
    */
   public QueryService(String apiToken) {
-    super(apiToken);
+    this(apiToken, 0);
   }
+
+  /**
+   * Construct a QueryService.
+   *
+   * @param apiToken The API authorization token to use when communicating with the server. Should
+   *     be a "Read Logs" token.
+   * @param chunkSizeHours If nonzero, then for queries which cover a long time period, we split the query
+   *     into chunks of this duration and issue each chunk as a separate query. For instance, if `chunkSizeHours`
+   *     is 24 and you query a 7-day period, we issue seven separate one-day queries. These queries are issued
+   *     one at a time. Chunking should be used if you experience timeouts when querying long time periods, which
+   *     can happen if you have a large amount of log data, especially when using full-text search rather than
+   *     querying specific fields. (For instance, `userName == 'foo'` will execute more efficiently than `message contains 'foo'`.)
+   *
+   *     A reasonable chunk size is often 12 to 24 hours. Smaller values reduce the possibility of timeout, but add
+   *     overhead for extra round-trips to the Scalyr server.
+   *
+   *    chunkSizeHours is only supported for a limit set of query types; others will thrown a RuntimeException.
+   */
+  public QueryService(String apiToken, int chunkSizeHours) {
+    super(apiToken);
+    this.chunkSizeHours = chunkSizeHours;
+  }
+
 
   /**
    * Specifies which direction to page through the matching log events when more events match the
@@ -81,6 +115,30 @@ public class QueryService extends ScalyrService {
   public LogQueryResult logQuery(String filter, String startTime, String endTime, Integer maxCount,
                                  PageMode pageMode, String columns, String continuationToken)
       throws ScalyrException, ScalyrNetworkException {
+
+    if (chunkSizeHours <= 0)
+      return logQuery_(filter, startTime, endTime, maxCount, pageMode, columns, continuationToken);
+
+    Stream<Pair<String>> chunked = splitIntoChunks(startTime, endTime, chunkSizeHours);
+
+    if (pageMode == PageMode.tail) chunked = reversed(chunked); // splitIntoChunks returns oldest -> newest, must flip for tail
+
+    LogQueryResult merged = null;
+    List<Pair<String>> chunkList = chunked.collect(Collectors.toList());
+    for (int i=0; i<chunkList.size(); i++) {
+      Pair<String> pair = chunkList.get(i);
+      LogQueryResult chunk = logQuery_(filter, pair.a, pair.b, maxCount, pageMode, columns, continuationToken);
+      merged = LogQueryResult.merge(merged, chunk);
+      if (merged.matches.size() >= maxCount) break;
+    }
+
+    return merged;
+  }
+
+  // Actual workhorse method for a single blocking query call
+  private LogQueryResult logQuery_(String filter, String startTime, String endTime, Integer maxCount,
+                                 PageMode pageMode, String columns, String continuationToken)
+      throws ScalyrException, ScalyrNetworkException {
     JSONObject parameters = new JSONObject();
     parameters.put("token", apiToken);
     parameters.put("queryType", "log");
@@ -110,6 +168,74 @@ public class QueryService extends ScalyrService {
     checkResponseStatus(rawApiResponse);
     return unpackLogQueryResult(rawApiResponse);
   }
+
+
+  //--------------------------------------------------------------------------------
+  // query chunking, public for testing
+  //--------------------------------------------------------------------------------
+
+  public static <T> Stream<T> reversed(Stream<T> s) {
+    List<T> asList = s.collect(Collectors.toList());
+    Collections.reverse(asList);
+    return asList.stream();
+  }
+
+
+  public static class Pair<T> {
+    public final T a, b;
+    public Pair(T a, T b) {
+      this.a = a;
+      this.b = b;
+    }
+    @Override public boolean equals(Object o) {
+      if (!(o instanceof Pair))
+        return false;
+
+      Pair p = (Pair) o;
+      return ScalyrUtil.equals(a, p.a) && ScalyrUtil.equals(b, p.b);
+    }
+  }
+
+  /**
+   * Split `[startTime, endTime)` into chunks of at most `chunkSizeHours`.
+   *
+   * @throws RuntimeException unless both startTime and endTime can be parsed as seconds-, millis-, or nanos-since-1970.
+   */
+  public static Stream<Pair<String>> splitIntoChunks(String startTime, String endTime, int chunkSizeHours) {
+    try {
+      return splitIntoChunks(Long.parseLong(startTime), Long.parseLong(endTime), chunkSizeHours)
+        .map(longPair -> new Pair<>(Long.toString(longPair.a), Long.toString(longPair.b)));
+    } catch (Exception ignored) {
+    }
+
+    throw new RuntimeException("Cannot parse [" + startTime + ", " + endTime + "); both values must numeric (in seconds-, millis-, or nanos-since-1970) when using a chunking QueryService");
+  }
+
+  /** Split `[start, end)` into `[start, start + chunk), [start + chunk, start + chunk * 2), ... [start + chunk * N, end)`. */
+  public static Stream<Pair<Long>> splitIntoChunks(final long start, final long end, final int chunkSizeHours) {
+    // figure out the right chunkSize to use per `chunkSizeHours` vs our supported start/end precisions
+    // using 1/1/2470 as the cutoff for detecting the precision used by "end"
+    final long chunkSize =
+      end < 500L*365*24*60*60       ? chunkSizeHours*3600L :       // seconds
+      end < 500L*365*24*60*60*1_000 ? chunkSizeHours*3600L*1_000 : // millis
+      chunkSizeHours*3600L*ScalyrUtil.NANOS_PER_SECOND;               // everything else nanos
+
+    ArrayList<Pair<Long>> ret = new ArrayList<>();
+
+    for (int n = 0; n < 1000; n++) { // 1000 is just a short-circuit in case of weird input
+      long chunkStart = start + n*chunkSize;
+      long chunkEnd   = chunkStart + chunkSize;
+      ret.add(new Pair(chunkStart, Math.min(end, chunkEnd)));
+      if (chunkEnd >= end)
+        return ret.stream();
+    }
+
+    throw new RuntimeException("Too many chunks for [" + start + ", " + end + ")");
+  }
+
+
+
+
 
   /**
    * Given the raw server response to a log query, encapsulate the query result in a LogQueryResult.
@@ -171,6 +297,18 @@ public class QueryService extends ScalyrService {
    * system, or other automated tool. A timeseries precomputes a numeric query, allowing you to execute queries almost
    * instantaneously, and without exhausting your query execution limit.
    *
+   * NOTE - if you are using chunked queries, each chunk will be queried using `buckets` - so, the total number of
+   * buckets returned will be the `buckets * (endTime-startTime)/chunkSize`.  As a result, you should take care
+   * that your query timespan (`endTime-startTime`) is a multiple of your chunkSize.  If this is not the case,
+   * then the final chunk will cover less time than the earlier chunks, and the buckets will likewise cover
+   * less time, which will be misleading.
+   *
+   * In any case, when using a chunking QueryService, you will need to sum (or otherwise combine) the results from the
+   * individual chunk queries. For a simple example, if chunkSizeHours is 24, you are querying a 7 day span, and you
+   * specify `function='count'` and `buckets=1`, the result will contain seven values – giving the number of matching events
+   * in each day of the query.  You would then sum those values to compute the total number of matching events across
+   * the 7 day span.
+   *
    * @param filter Specifies which log records to match, using the same syntax as the Expression field in the
    *     query UI. To match all log records, pass null or an empty string.
    * @param function Specifies the value to compute from the matching events. You can use any function listed
@@ -190,6 +328,23 @@ public class QueryService extends ScalyrService {
    * @throws ScalyrServerException if the Scalyr service returns an error
    */
   public NumericQueryResult numericQuery(String filter, String function, String startTime,
+                                         String endTime, Integer buckets)
+      throws ScalyrException, ScalyrNetworkException {
+
+    if (chunkSizeHours <= 0)
+      return numericQuery_(filter, function, startTime, endTime, buckets);
+
+    Stream<Pair<String>> chunked = splitIntoChunks(startTime, endTime, chunkSizeHours);
+
+    return chunked
+      .map(pair -> numericQuery_(filter, function, pair.a, pair.b, buckets))
+      .collect(Collectors.reducing(null, NumericQueryResult::merge));
+    }
+
+
+
+  // actual workhorse of for one blocking query call
+  private NumericQueryResult numericQuery_(String filter, String function, String startTime,
                                          String endTime, Integer buckets)
       throws ScalyrException, ScalyrNetworkException {
     JSONObject parameters = new JSONObject();
@@ -258,6 +413,10 @@ public class QueryService extends ScalyrService {
    */
   public FacetQueryResult facetQuery(String filter, String field, Integer maxCount, String startTime, String endTime)
       throws ScalyrException, ScalyrNetworkException {
+
+    if (chunkSizeHours > 0)
+      throw new RuntimeException("chunked facet queries not yet supported; use a non-chunking QueryService for facet queries");
+
     JSONObject parameters = new JSONObject();
     parameters.put("token", apiToken);
     parameters.put("queryType", "facet");
@@ -327,6 +486,10 @@ public class QueryService extends ScalyrService {
    */
   public TimeseriesQueryResult timeseriesQuery(TimeseriesQuerySpec[] queries)
       throws ScalyrException, ScalyrNetworkException {
+
+    if (chunkSizeHours > 0)
+      throw new RuntimeException("chunked timeseries queries not yet supported; use a non-chunking QueryService for timeseries queries");
+
     JSONObject parameters = new JSONObject();
     parameters.put("token", apiToken);
 
@@ -477,10 +640,27 @@ public class QueryService extends ScalyrService {
      */
     public final String continuationToken;
 
-    LogQueryResult(double executionTime, String continuationToken) {
+    public LogQueryResult(double executionTime, String continuationToken) {
       this.executionTime = executionTime;
       this.continuationToken = continuationToken;
     }
+
+
+    /**
+     * Merge `a` and `b` into a new result (whose `b` matches follow those of `a`, and using b's continuationToken).
+     * Make sure to provide inputs in your desired order. May return one of its inputs if the other is null.
+     */
+    public static LogQueryResult merge(LogQueryResult a, LogQueryResult b) {
+      if (a == null) return b;
+      if (b == null) return a;
+      LogQueryResult ret = new LogQueryResult(a.executionTime + b.executionTime, b.continuationToken);
+      ret.matches.addAll(a.matches);
+      ret.matches.addAll(b.matches);
+      return ret;
+    }
+
+
+
 
     @Override public String toString() {
       int matchCount = matches.size();
@@ -541,7 +721,7 @@ public class QueryService extends ScalyrService {
      */
     public final EventAttributes fields;
 
-    LogQueryMatch(long timestamp, String message, Severity severity, String sessionId, EventAttributes sessionFields,
+    public LogQueryMatch(long timestamp, String message, Severity severity, String sessionId, EventAttributes sessionFields,
                   String threadId, EventAttributes fields) {
       this.timestamp = timestamp;
       this.message = message;
@@ -575,9 +755,23 @@ public class QueryService extends ScalyrService {
      */
     public final double executionTime;
 
-    NumericQueryResult(double executionTime) {
+    public NumericQueryResult(double executionTime) {
       this.executionTime = executionTime;
     }
+
+    /**
+     * Merge `a` and `b` into a new result (whose `b` values follow those of `a`)
+     * Make sure to provide inputs in your desired order. May return one of its inputs if the other is null.
+     */
+    public static NumericQueryResult merge(NumericQueryResult a, NumericQueryResult b) {
+      if (a == null) return b;
+      if (b == null) return a;
+      NumericQueryResult ret = new NumericQueryResult(a.executionTime + b.executionTime);
+      ret.values.addAll(a.values);
+      ret.values.addAll(b.values);
+      return ret;
+    }
+
 
     @Override public String toString() {
       int valueCount = values.size();
@@ -704,6 +898,85 @@ public class QueryService extends ScalyrService {
       sb.append("]}");
       return sb.toString();
     }
+  }
+
+
+  /**
+   * Quick, hacky cmd line interface; first arg is the name of the query method and
+   * subsequent args are 1-for-1 positional parameters for that method.  Provide '-' for
+   * optional parameters you wish to omit.
+   */
+  public static void main(String[] args) {
+    final String apiToken = System.getenv("scalyr_readlog_token");
+    final String chunkSizeHours = System.getenv("scalyr_chunksize_hours");
+
+    if (apiToken == null)
+      printUsageAndExit("ERROR: must specify 'scalyr_readlog_token'");
+
+    if (args.length < 1 || args[0] == null || args[0].matches("--?(\\?|help)"))
+      printUsageAndExit();
+
+    String method = args[0];
+    if (method == null || !method.matches("^(facet|numeric|log)Query$"))
+      printUsageAndExit("ERROR: unrecognized method '" + method + "'");
+
+    try {
+      QueryService svc = new QueryService(apiToken, chunkSizeHours == null ? 0 : Integer.parseInt(chunkSizeHours));
+
+      // 'parse' args, so hacky
+      String filter = null, function = null, field = null, startTime = null, endTime = null, columns = null, continuationToken = null;
+      PageMode pageMode = PageMode.head;
+      Integer maxCount = null, buckets = null;
+
+      int i    = 1;
+      filter   = args[i++];
+      if (method.equals("numericQuery")) function = args[i++];
+      if (method.equals("facetQuery"))   field    = args[i++];
+      if (method.equals("facetQuery"))   maxCount = Integer.parseInt(args[i++]); // awesome that this comes before start/end time for facetQuery
+      startTime = args[i++];
+      endTime   = args[i++];
+      if (method.equals("numericQuery")) buckets  = Integer.parseInt(args[i++]);
+      if (method.equals("logQuery"))     maxCount = Integer.parseInt(args[i++]);
+      if (method.equals("logQuery"))     pageMode = Enum.valueOf(PageMode.class, args[i++]);
+      if (method.equals("logQuery") && args.length > i) columns = args[i++];
+      if (method.equals("logQuery") && args.length > i) continuationToken = args[i++];
+
+      if ("-".equals(filter))            filter              = null;
+      if ("-".equals(function))          function            = null;
+      if ("-".equals(field))             field               = null;
+      if ("-".equals(startTime))         startTime           = null;
+      if ("-".equals(endTime))           endTime             = null;
+      if ("-".equals(columns))           columns             = null;
+      if ("-".equals(continuationToken)) continuationToken   = null;
+
+      if (method.equals("logQuery"))     dump(    svc.logQuery(filter, startTime, endTime, maxCount, pageMode, columns, continuationToken));
+      if (method.equals("facetQuery"))   dump(  svc.facetQuery(filter, field, maxCount, startTime, endTime));
+      if (method.equals("numericQuery")) dump(svc.numericQuery(filter, function, startTime, endTime, buckets));
+    } catch (Exception e) {
+      printUsageAndExit(e.getMessage());
+    }
+  }
+
+  // TODO: make these prettier
+  static void dump(LogQueryResult r)     { System.out.println(r.toString()); }
+  static void dump(FacetQueryResult r)   { System.out.println(r.toString()); }
+  static void dump(NumericQueryResult r) { System.out.println(r.toString()); }
+
+  static void printUsageAndExit(String err) {
+    System.err.println(err);
+    System.err.println("");
+    printUsageAndExit();
+  }
+
+  static void printUsageAndExit() {
+    System.err.println("Usage: java com.scalyr.api.query.QueryService <methodName> <methodArg1> <methodArg2>...");
+    System.err.println("       First arg is the name of the query method and subsequent args are 1-for-1 positional");
+    System.err.println("       parameters for that method.  Provide '-' for optional parameters you wish to omit");
+    System.err.println("");
+    System.err.println("   eg: ..QueryService logQuery someText 4h 0m 100 tail - -");
+    System.err.println("");
+    System.err.println("Quitting");
+    System.exit(1);
   }
 
 }
