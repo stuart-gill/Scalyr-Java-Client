@@ -45,6 +45,9 @@ public class QueryService extends ScalyrService {
   /** If nonzero, divide queries into chunks of at most this size for serial execution. */
   private final int chunkSizeHours;
 
+  /** Priority to run the queries at */
+  private final String queryPriority;
+
 
   /**
    * Construct a QueryService for non-chunked execution.
@@ -53,7 +56,7 @@ public class QueryService extends ScalyrService {
    *     be a "Read Logs" token.
    */
   public QueryService(String apiToken) {
-    this(apiToken, 0);
+    this(apiToken, 0, "");
   }
 
   /**
@@ -72,10 +75,15 @@ public class QueryService extends ScalyrService {
    *     overhead for extra round-trips to the Scalyr server.
    *
    *    chunkSizeHours is only supported for a limit set of query types; others will thrown a RuntimeException.
+   * @param queryPriority Specifies the execution priority at either "low" or "high"; defaults to "low".
+   *    Use "low" for background operations where a delay of a second or so is acceptable. Low-priority queries have more generous rate limits.
    */
-  public QueryService(String apiToken, int chunkSizeHours) {
+  public QueryService(String apiToken, int chunkSizeHours, String queryPriority) {
     super(apiToken);
     this.chunkSizeHours = chunkSizeHours;
+
+    ScalyrUtil.Assert(queryPriority.equals("") || queryPriority.equals("low") || queryPriority.equals("high"), "queryPriority must be one of \"\", \"low\", or \"high\"");
+    this.queryPriority  = queryPriority;
   }
 
 
@@ -142,6 +150,7 @@ public class QueryService extends ScalyrService {
     JSONObject parameters = new JSONObject();
     parameters.put("token", apiToken);
     parameters.put("queryType", "log");
+    parameters.put("priority", queryPriority);
 
     if (filter != null)
       parameters.put("filter", filter);
@@ -350,6 +359,7 @@ public class QueryService extends ScalyrService {
     JSONObject parameters = new JSONObject();
     parameters.put("token", apiToken);
     parameters.put("queryType", "numeric");
+    parameters.put("priority", queryPriority);
 
     if (filter != null)
       parameters.put("filter", filter);
@@ -420,6 +430,7 @@ public class QueryService extends ScalyrService {
     JSONObject parameters = new JSONObject();
     parameters.put("token", apiToken);
     parameters.put("queryType", "facet");
+    parameters.put("priority", queryPriority);
 
     if (filter != null)
       parameters.put("filter", filter);
@@ -907,8 +918,9 @@ public class QueryService extends ScalyrService {
    * optional parameters you wish to omit.
    */
   public static void main(String[] args) {
-    final String apiToken = System.getenv("scalyr_readlog_token");
+    final String apiToken       = System.getenv("scalyr_readlog_token");
     final String chunkSizeHours = System.getenv("scalyr_chunksize_hours");
+    final String queryPriority  = System.getenv("scalyr_query_priority");
 
     if (apiToken == null)
       printUsageAndExit("ERROR: must specify 'scalyr_readlog_token'");
@@ -921,7 +933,7 @@ public class QueryService extends ScalyrService {
       printUsageAndExit("ERROR: unrecognized method '" + method + "'");
 
     try {
-      QueryService svc = new QueryService(apiToken, chunkSizeHours == null ? 0 : Integer.parseInt(chunkSizeHours));
+      QueryService svc = new QueryService(apiToken, chunkSizeHours == null ? 0 : Integer.parseInt(chunkSizeHours), queryPriority);
 
       // 'parse' args, so hacky
       String filter = null, function = null, field = null, startTime = null, endTime = null, columns = null, continuationToken = null;
