@@ -20,11 +20,14 @@ package com.scalyr.api.query;
 import com.scalyr.api.ScalyrException;
 import com.scalyr.api.ScalyrNetworkException;
 import com.scalyr.api.ScalyrServerException;
+import com.scalyr.api.TuningConstants;
 import com.scalyr.api.internal.Logging;
 import com.scalyr.api.internal.ScalyrService;
 import com.scalyr.api.internal.ScalyrUtil;
 import com.scalyr.api.json.JSONArray;
 import com.scalyr.api.json.JSONObject;
+import com.scalyr.api.knobs.Knob;
+import com.scalyr.api.knobs.ConfigurationFile;
 import com.scalyr.api.logs.EventAttributes;
 import com.scalyr.api.logs.Severity;
 
@@ -907,6 +910,10 @@ public class QueryService extends ScalyrService {
    * optional parameters you wish to omit.
    */
   public static void main(String[] args) {
+    // use the ApacheHttpClient; the java.net version is highly non-performant
+    Knob.setDefaultFiles(new ConfigurationFile[0]);
+    TuningConstants.useApacheHttpClientForEventUploader = new Knob.Boolean("useApacheHttpClientForEventUploader", true);
+
     final String apiToken = System.getenv("scalyr_readlog_token");
     final String chunkSizeHours = System.getenv("scalyr_chunksize_hours");
 
