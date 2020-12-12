@@ -115,6 +115,7 @@
                         </goals>
                         <configuration>
                             <show>public</show>
+                            <additionalparam>-Xdoclint:none</additionalparam>
                             <sourcepath>${project.basedir}/src</sourcepath>
                         </configuration>
                     </execution>
@@ -182,6 +183,9 @@
                                 <goals>
                                     <goal>jar</goal>
                                 </goals>
+                                <configuration>
+                                    <additionalparam>-Xdoclint:none</additionalparam>
+                                </configuration>
                             </execution>
                         </executions>
                     </plugin>
