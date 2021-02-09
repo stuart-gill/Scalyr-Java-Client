@@ -32,7 +32,7 @@
         <url>https://github.com/scalyr/Scalyr-Java-Client</url>
         <connection>scm:git:git://github.com/scalyr/Scalyr-Java-Client.git</connection>
         <developerConnection>scm:git:git@github.com:scalyr/Scalyr-Java-Client.git</developerConnection>
-    <tag>scalyr-client-6.0.6</tag>
+    <tag>scalyr-client-6.0.25</tag>
   </scm>
 
     <developers>
