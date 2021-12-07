@@ -343,14 +343,18 @@ public class QueryTest extends LogsTestBase {
       + "  'function': 'testFunction1',"
       + "  'startTime': '4h',"
       + "  'endTime': '2h',"
-      + "  'buckets': 3"
+      + "  'buckets': 3,"
+      + "  'onlyUseSummaries': false,"
+      + "  'createSummaries': true"
       + "  },"
       + "  {"
       + "  'filter': 'testFilter2',"
       + "  'function': 'testFunction2',"
       + "  'startTime': '4h',"
       + "  'endTime': '2h',"
-      + "  'buckets': 10"
+      + "  'buckets': 10,"
+      + "  'onlyUseSummaries': false,"
+      + "  'createSummaries': true"
       + "  }"
       + "]}",
         "{'status': 'success',"
@@ -362,6 +366,7 @@ public class QueryTest extends LogsTestBase {
       + "}"
         );
 
+    // Optional onlyUseSummaries and createSummaries flags not specified
     TimeseriesQuerySpec query1 = new TimeseriesQuerySpec();
     query1.filter = "testFilter1";
     query1.function = "testFunction1";
@@ -382,6 +387,71 @@ public class QueryTest extends LogsTestBase {
       + "{NumericQueryResult: 3 values, execution time 9.0 ms, values [1.0, 2.0, -3.5]}, "
       + "{NumericQueryResult: 10 values, execution time 12.0 ms, values [1.0, 4.0, 8.0, 5.0, 3.0, -10.0, 4.0, 8.0, 3.0, 1.0]}]}",
         queryResult.toString());
+  }
+
+  /**
+   * A test of QueryService.timeseriesQuery(), issuing a query including onlyUseSummaries and createSummaries flags
+   * and verifying that the response is correctly unpacked.
+   */
+  @Test public void testTimeseriesQueryOnlyUseSummaries() {
+    QueryService queryService = new MockQueryService();
+
+    expectRequest(
+      "api/timeseriesQuery",
+      "{'token': 'dummyToken',"
+        + "'queries': ["
+        + "  {"
+        + "  'filter': 'testFilter1',"
+        + "  'function': 'testFunction1',"
+        + "  'startTime': '4h',"
+        + "  'endTime': '2h',"
+        + "  'buckets': 3,"
+        + "  'onlyUseSummaries': false,"
+        + "  'createSummaries': true"
+        + "  },"
+        + "  {"
+        + "  'filter': 'testFilter2',"
+        + "  'function': 'testFunction2',"
+        + "  'startTime': '4h',"
+        + "  'endTime': '2h',"
+        + "  'buckets': 10,"
+        + "  'onlyUseSummaries': true,"
+        + "  'createSummaries': false"
+        + "  }"
+        + "]}",
+      "{'status': 'success',"
+        + "'executionTime': 27,"
+        + "'results': ["
+        + "  { 'executionTime': 9, 'values': [1, 2.0, -3.5] },"
+        + "  { 'executionTime': 12, 'values': [1,4,8,5,3,-10,4,8,3,1] }"
+        + "]"
+        + "}"
+    );
+
+    TimeseriesQuerySpec query1 = new TimeseriesQuerySpec();
+    query1.filter = "testFilter1";
+    query1.function = "testFunction1";
+    query1.startTime = "4h";
+    query1.endTime = "2h";
+    query1.buckets = 3;
+    query1.onlyUseSummaries = false;
+    query1.createSummaries = true;
+
+    TimeseriesQuerySpec query2 = new TimeseriesQuerySpec();
+    query2.filter = "testFilter2";
+    query2.function = "testFunction2";
+    query2.startTime = "4h";
+    query2.endTime = "2h";
+    query2.buckets = 10;
+    query2.onlyUseSummaries = true;
+    query2.createSummaries = false;
+
+    TimeseriesQueryResult queryResult = queryService.timeseriesQuery(new TimeseriesQuerySpec[]{query1, query2});
+    assertEquals(
+      "{TimeseriesQueryResult: 2 values, execution time 27.0 ms, values ["
+        + "{NumericQueryResult: 3 values, execution time 9.0 ms, values [1.0, 2.0, -3.5]}, "
+        + "{NumericQueryResult: 10 values, execution time 12.0 ms, values [1.0, 4.0, 8.0, 5.0, 3.0, -10.0, 4.0, 8.0, 3.0, 1.0]}]}",
+      queryResult.toString());
   }
 
   // @Test public void liveTest() {

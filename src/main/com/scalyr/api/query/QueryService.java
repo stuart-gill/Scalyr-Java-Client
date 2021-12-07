@@ -528,18 +528,20 @@ public class QueryService extends ScalyrService {
   }
 
   /**
-   * Retrieve numeric data from one or more timeseries, automatically creating them as a side effect if necessary.  A
-   * timeseries precomputes a numeric query, allowing you to execute queries almost instantaneously, and without
-   * exhausting your query execution limit.  This is especially useful if you are using the Scalyr API to feed a
-   * home-built dashboard, alerting system, or other automated tool.
+   * Retrieve numeric data from one or more timeseries, automatically creating them as a side effect if necessary, unless
+   * the createSummaries flag is false. A timeseries precomputes a numeric query, allowing you to execute queries almost
+   * instantaneously, and without exhausting your query execution limit.  This is especially useful if you are using the
+   * Scalyr API to feed a home-built dashboard, alerting system, or other automated tool.
    *
-   * When new timeseries are defined, they immediately capture data from this moment onward and our servers begin
-   * a background process to backpropagate the timeseries over data we have already received.  The result is that,
+   * When new timeseries are defined, by default they immediately capture data from this moment onward and our servers
+   * begin a background process to backpropagate the timeseries over data we have already received.  The result is that,
    * within an hour of defining a new timeseries, you should be able to rapidly query for historical data as well
-   * as new data.
+   * as new data. To change this behavior, set the createSummaries flag to false.
    *
-   * This method's parameters are similar to {@link #numericQuery}; with the one difference being that you may specify
-   * multiple queries in a single request.
+   * To prevent the query from searching any logs not yet precomputed into a timeseries, set onlyUseSummaries to true.
+   *
+   * This method's parameters are similar to {@link #numericQuery}; with the differences being that you may specify
+   * multiple queries in a single request, whether to create summaries, and whether to query only summaries
    *
    * @param queries The queries to execute.
    *
@@ -565,6 +567,8 @@ public class QueryService extends ScalyrService {
       queryJson.put("startTime", query.startTime);
       queryJson.put("endTime", query.endTime);
       queryJson.put("buckets", query.buckets);
+      queryJson.put("onlyUseSummaries", query.onlyUseSummaries);
+      queryJson.put("createSummaries", query.createSummaries);
 
       queriesJson.add(queryJson);
     }
@@ -602,6 +606,16 @@ public class QueryService extends ScalyrService {
      * You may specify a value from 1 to 5000.
      */
     public int buckets = 1;
+
+    /**
+     * If true, only query summaries. If false, search the column store for any summaries not yet populated
+     */
+    public boolean onlyUseSummaries = false;
+
+    /**
+     * If true, create summaries for any queried period not yet populated. If false, do not.
+     */
+    public boolean createSummaries = true;
   }
 
   /**
