@@ -613,7 +613,7 @@ public class QueryService extends ScalyrService {
     public boolean onlyUseSummaries = false;
 
     /**
-     * If true, create summaries for any queried period not yet populated. If false, do not.
+     * If true, create summaries for this query. If false, do not.
      */
     public boolean createSummaries = true;
   }

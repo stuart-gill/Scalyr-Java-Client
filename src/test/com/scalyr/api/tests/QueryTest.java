@@ -390,7 +390,7 @@ public class QueryTest extends LogsTestBase {
   }
 
   /**
-   * A test of QueryService.timeseriesQuery(), issuing a query including onlyUseSummaries and createSummaries flags
+   * A test of QueryService.timeseriesQuery(), issuing queries including onlyUseSummaries and createSummaries flags
    * and verifying that the response is correctly unpacked.
    */
   @Test public void testTimeseriesQueryWithSummariesFlags() {
