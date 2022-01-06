@@ -451,6 +451,10 @@ public class QueryService extends ScalyrService {
       result.values.add(convertToDouble(value));
     }
 
+    // Populate the message if appropriate. Used with timeseriesQuery when onlyUseSummaries flag is true, and summaries are not yet populated
+    if (rawApiResponse.get("message") != null) {
+      result.message = (String) rawApiResponse.get("message");
+    }
     return result;
   }
 
@@ -839,6 +843,8 @@ public class QueryService extends ScalyrService {
      */
     public final List<Double> values = new ArrayList<Double>();
 
+    public String message;
+
     /**
      * How much time the server spent processing this query, in milliseconds.
      */
@@ -877,7 +883,13 @@ public class QueryService extends ScalyrService {
         sb.append(values.get(i));
       }
 
-      sb.append("]}");
+      sb.append("]");
+
+      if (message != null) {
+        sb.append(", message: " + message);
+      }
+
+      sb.append ("}");
       return sb.toString();
     }
   }

@@ -423,7 +423,7 @@ public class QueryTest extends LogsTestBase {
         + "'executionTime': 27,"
         + "'results': ["
         + "  { 'executionTime': 9, 'values': [1, 2.0, -3.5] },"
-        + "  { 'executionTime': 12, 'values': [1,4,8,5,3,-10,4,8,3,1] }"
+        + "  { 'executionTime': 0, 'values': [], 'message': 'Waiting for summary data to be populated' }"
         + "]"
         + "}"
     );
@@ -450,7 +450,7 @@ public class QueryTest extends LogsTestBase {
     assertEquals(
       "{TimeseriesQueryResult: 2 values, execution time 27.0 ms, values ["
         + "{NumericQueryResult: 3 values, execution time 9.0 ms, values [1.0, 2.0, -3.5]}, "
-        + "{NumericQueryResult: 10 values, execution time 12.0 ms, values [1.0, 4.0, 8.0, 5.0, 3.0, -10.0, 4.0, 8.0, 3.0, 1.0]}]}",
+        + "{NumericQueryResult: 0 values, execution time 0.0 ms, values [], message: Waiting for summary data to be populated}]}",
       queryResult.toString());
   }
 
