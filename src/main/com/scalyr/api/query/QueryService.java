@@ -528,20 +528,29 @@ public class QueryService extends ScalyrService {
   }
 
   /**
-   * Retrieve numeric data from one or more timeseries, automatically creating them as a side effect if necessary, unless
-   * the createSummaries flag is false. A timeseries precomputes a numeric query, allowing you to execute queries almost
-   * instantaneously, and without exhausting your query execution limit.  This is especially useful if you are using the
-   * Scalyr API to feed a home-built dashboard, alerting system, or other automated tool.
+   * Execute one or more numeric queries, optionally creating timeseries for them if `createTimeseries` is true.
+   * A timeseries precomputes a numeric query, allowing you to execute queries almost instantaneously, and without
+   * exhausting your query execution limit.  This is especially useful if you are using the Scalyr API to feed a
+   * home-built dashboard, alerting system, or other automated tool.
    *
-   * When new timeseries are defined, by default they immediately capture data from this moment onward and our servers
-   * begin a background process to backpropagate the timeseries over data we have already received.  The result is that,
-   * within an hour of defining a new timeseries, you should be able to rapidly query for historical data as well
-   * as new data. To change this behavior, set the createSummaries flag to false.
+   * When a new timeseries is defined, we immediately start live updating of that timeseries from the ingestion pipeline.
+   * In addition, we begin a background process to extend the timeseries backward in time, so that it covers the full
+   * timespan of your query. This backfill process is automatic, and if you later issue the same query with an even
+   * earlier start time, we will extend the backfill to cover that as well.
    *
-   * To prevent the query from searching any logs not yet precomputed into a timeseries, set onlyUseSummaries to true.
+   * To change this behavior, set createSummaries to false.
    *
-   * This method's parameters are similar to {@link #numericQuery}; with the differences being that you may specify
-   * multiple queries in a single request, whether to create summaries, and whether to query only summaries
+   * A related flag, onlyUseSummaries, controls whether this API call should only use preexisting timeseries or should
+   * actually execute the queries against the event database. If set to true, then your API call is guaranteed to return
+   * quickly and to execute inexpensively, but with possibly-incomplete results. If set to false, the call  is slower
+   * & more expensive, but will be complete.
+   *
+   * Issuing a new query over the past 3 weeks with createSummaries = true, onlyUseSummaries = true will return quickly
+   * no matter what, but will initially return incomplete results until backfill (covering the past 3 weeks) is complete.
+   * This can be a cost-effective way to seed a new timeseries with a long backfill period when you don't need complete
+   * results right away.
+   *
+   * Issuing a query with createSummaries = false, onlyUseSummaries = false is equivalent to a {@link #numericQuery} call.
    *
    * @param queries The queries to execute.
    *
