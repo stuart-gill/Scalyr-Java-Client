@@ -451,6 +451,10 @@ public class QueryService extends ScalyrService {
       result.values.add(convertToDouble(value));
     }
 
+    // Populate the message if appropriate. Used with timeseriesQuery when onlyUseSummaries flag is true, and summaries are not yet populated
+    if (rawApiResponse.get("message") != null) {
+      result.message = (String) rawApiResponse.get("message");
+    }
     return result;
   }
 
@@ -528,18 +532,29 @@ public class QueryService extends ScalyrService {
   }
 
   /**
-   * Retrieve numeric data from one or more timeseries, automatically creating them as a side effect if necessary.  A
-   * timeseries precomputes a numeric query, allowing you to execute queries almost instantaneously, and without
+   * Execute one or more numeric queries, optionally creating timeseries for them if `createTimeseries` is true.
+   * A timeseries precomputes a numeric query, allowing you to execute queries almost instantaneously, and without
    * exhausting your query execution limit.  This is especially useful if you are using the Scalyr API to feed a
    * home-built dashboard, alerting system, or other automated tool.
    *
-   * When new timeseries are defined, they immediately capture data from this moment onward and our servers begin
-   * a background process to backpropagate the timeseries over data we have already received.  The result is that,
-   * within an hour of defining a new timeseries, you should be able to rapidly query for historical data as well
-   * as new data.
+   * When a new timeseries is defined, we immediately start live updating of that timeseries from the ingestion pipeline.
+   * In addition, we begin a background process to extend the timeseries backward in time, so that it covers the full
+   * timespan of your query. This backfill process is automatic, and if you later issue the same query with an even
+   * earlier start time, we will extend the backfill to cover that as well.
    *
-   * This method's parameters are similar to {@link #numericQuery}; with the one difference being that you may specify
-   * multiple queries in a single request.
+   * To change this behavior, set createSummaries to false.
+   *
+   * A related flag, onlyUseSummaries, controls whether this API call should only use preexisting timeseries or should
+   * actually execute the queries against the event database. If set to true, then your API call is guaranteed to return
+   * quickly and to execute inexpensively, but with possibly-incomplete results. If set to false, the call  is slower
+   * & more expensive, but will be complete.
+   *
+   * Issuing a new query over the past 3 weeks with createSummaries = true, onlyUseSummaries = true will return quickly
+   * no matter what, but will initially return incomplete results until backfill (covering the past 3 weeks) is complete.
+   * This can be a cost-effective way to seed a new timeseries with a long backfill period when you don't need complete
+   * results right away.
+   *
+   * Issuing a query with createSummaries = false, onlyUseSummaries = false is equivalent to a {@link #numericQuery} call.
    *
    * @param queries The queries to execute.
    *
@@ -565,6 +580,8 @@ public class QueryService extends ScalyrService {
       queryJson.put("startTime", query.startTime);
       queryJson.put("endTime", query.endTime);
       queryJson.put("buckets", query.buckets);
+      queryJson.put("onlyUseSummaries", query.onlyUseSummaries);
+      queryJson.put("createSummaries", query.createSummaries);
 
       queriesJson.add(queryJson);
     }
@@ -602,6 +619,16 @@ public class QueryService extends ScalyrService {
      * You may specify a value from 1 to 5000.
      */
     public int buckets = 1;
+
+    /**
+     * If true, only query summaries. If false, search the column store for any summaries not yet populated
+     */
+    public boolean onlyUseSummaries = false;
+
+    /**
+     * If true, create summaries for this query. If false, do not.
+     */
+    public boolean createSummaries = true;
   }
 
   /**
@@ -816,6 +843,8 @@ public class QueryService extends ScalyrService {
      */
     public final List<Double> values = new ArrayList<Double>();
 
+    public String message;
+
     /**
      * How much time the server spent processing this query, in milliseconds.
      */
@@ -854,7 +883,13 @@ public class QueryService extends ScalyrService {
         sb.append(values.get(i));
       }
 
-      sb.append("]}");
+      sb.append("]");
+
+      if (message != null) {
+        sb.append(", message: " + message);
+      }
+
+      sb.append ("}");
       return sb.toString();
     }
   }
