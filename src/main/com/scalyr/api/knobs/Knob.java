@@ -63,7 +63,7 @@ public class Knob {
   /**
    * The key we look for in each file. If null, then we always use our default value.
    */
-  private final java.lang.String key;
+  public final java.lang.String key;
 
   /**
    * Value used if no file defines the key.
