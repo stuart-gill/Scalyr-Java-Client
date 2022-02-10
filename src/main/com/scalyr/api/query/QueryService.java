@@ -334,10 +334,11 @@ public class QueryService extends ScalyrService {
    * Retrieve numeric data, e.g. for graphing. You can count the rate of events matching some criterion (e.g. error
    * rate), or retrieve a numeric field (e.g. response size).
    *
-   * If you will be be invoking the same query repeatedly, you may want to use the {@link #timeseriesQuery} method
-   * instead.  This is especially useful if you are using the Scalyr API to feed a home-built dashboard, alerting
-   * system, or other automated tool. A timeseries precomputes a numeric query, allowing you to execute queries almost
-   * instantaneously, and without exhausting your query execution limit.
+   * A numeric query is equivalent to a {@link #timeseriesQuery} with argument createSummaries = false. If you will be
+   * invoking the same query repeatedly (e.g. in a script), you may want to use the timeseries query rather than numeric query.
+   *
+   * For timeseries queries with createSummaries = true, we create a timeseries on the backend for each unique
+   * filter/function pair. This query will execute near-instantaneously and avoid consuming your account's query budget.
    *
    * NOTE - if you are using chunked queries, each chunk will be queried using `buckets` - so, the total number of
    * buckets returned will be the `buckets * (endTime-startTime)/chunkSize`.  As a result, you should take care
@@ -532,7 +533,7 @@ public class QueryService extends ScalyrService {
   }
 
   /**
-   * Execute one or more numeric queries, optionally creating timeseries for them if `createTimeseries` is true.
+   * Execute one or more numeric queries, optionally creating timeseries for them if createSummaries is true.
    * A timeseries precomputes a numeric query, allowing you to execute queries almost instantaneously, and without
    * exhausting your query execution limit.  This is especially useful if you are using the Scalyr API to feed a
    * home-built dashboard, alerting system, or other automated tool.
@@ -545,16 +546,16 @@ public class QueryService extends ScalyrService {
    * To change this behavior, set createSummaries to false.
    *
    * A related flag, onlyUseSummaries, controls whether this API call should only use preexisting timeseries or should
-   * actually execute the queries against the event database. If set to true, then your API call is guaranteed to return
-   * quickly and to execute inexpensively, but with possibly-incomplete results. If set to false, the call  is slower
-   * & more expensive, but will be complete.
+   * execute the queries against the event database if no matching summary exists. If set to true, then your API call
+   * is guaranteed to return quickly and to execute inexpensively, but with possibly empty result values. If set to false,
+   * the call may be slower & more expensive, but will be complete.
    *
-   * Issuing a new query over the past 3 weeks with createSummaries = true, onlyUseSummaries = true will return quickly
-   * no matter what, but will initially return incomplete results until backfill (covering the past 3 weeks) is complete.
-   * This can be a cost-effective way to seed a new timeseries with a long backfill period when you don't need complete
+   * For example, issuing a new query over the past 3 weeks with onlyUseSummaries = true will return quickly
+   * no matter what, but will initially return empty result values until backfill (covering the past 3 weeks) is complete.
+   * This can be a cost-effective way to seed a new timeseries with a long backfill period when you don't need
    * results right away.
    *
-   * Issuing a query with createSummaries = false, onlyUseSummaries = false is equivalent to a {@link #numericQuery} call.
+   * Issuing a query with createSummaries = false is equivalent to a {@link #numericQuery} call.
    *
    * @param queries The queries to execute.
    *
@@ -621,12 +622,13 @@ public class QueryService extends ScalyrService {
     public int buckets = 1;
 
     /**
-     * If true, only query summaries. If false, search the column store for any summaries not yet populated
+     * If true, only query summaries. No values will be returned unless the summaries queried have been backfilled.
+     * If false (default), search the column store for any summaries not yet populated.
      */
     public boolean onlyUseSummaries = false;
 
     /**
-     * If true, create summaries for this query. If false, do not.
+     * If true (default), create summaries for this query. If false, do not.
      */
     public boolean createSummaries = true;
   }
